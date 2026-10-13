@@ -91,7 +91,8 @@ Record the shape in the project overlay (section 4.4). All the skills read it fr
 | [`zfl-to-zdl`](skills/zfl-to-zdl/SKILL.md) | ZFL flow → one ZDL per bounded context. Shape-aware (`@asyncapi` vs `@listener`), data-lineage check, `<Command>Result` wrapper for multi-response calls, org prefix from the overlay | ZDL | ✅ v1.4 used on Arcadia (modulith) · 🧪 v1.5 shape-aware |
 | [`zenwave-gap-report`](skills/zenwave-gap-report/SKILL.md) | Audits generated code against ZFL/ZDL: model gaps, flow wiring, data lineage, service bodies, mappers, web layer, tests, open questions | report only (read-only on code) | 🧪 its procedure produced the Arcadia report; not yet run as a skill |
 | [`zenwave-fill-gaps`](skills/zenwave-fill-gaps/SKILL.md) | Implements findings with ZenWave-aware patterns (load → guard → mutate → save → emit one event, result-wrapper branching, MapStruct constants, ports and stubs, idempotent consumers). Stops on model gaps | code | 🧪 not yet run as a skill |
-| [`zenwave-test-data`](skills/zenwave-test-data/SKILL.md) | Exports the Hibernate DDL with a bundled script (no project config), then writes `data.sql` plus matching JSON fixtures as scenario chains | test resources | 🧪 procedure run once on Arcadia (35 rows, both loaders pass) |
+| [`zenwave-test-data`](skills/zenwave-test-data/SKILL.md) | Exports the Hibernate DDL with a bundled script (no project config), then writes `data.sql` plus matching JSON fixtures: one consistent example per entity (basic, cheap) | test resources | 🧪 procedure run on Arcadia (Java: 7 rows, one chain) |
+| [`zenwave-test-scenarios`](skills/zenwave-test-scenarios/SKILL.md) | Builds a coverage matrix from ZDL lifecycles, ZFL branches and outcomes, timers, redelivery and the read side (plus the gap report if present), then writes the same files with one chain per case, assumptions listed. Reuses zenwave-test-data's DDL export, formats and validation | test resources | 🧪 new; the Kotlin Arcadia fixtures (36 rows, 8 chains) are the reference result |
 
 Project-specific knowledge (paths, shape, org prefix, build commands, decisions) goes
 in a **project overlay**, not in the skills. Template:
@@ -229,7 +230,7 @@ rm -rf "$tmp"
 
 - Commit `.claude/skills/` (or your agent's folder) so the whole team gets the same version.
 - In Claude Code, skills are available as `/zfl-to-zdl`, `/zenwave-gap-report`,
-  `/zenwave-fill-gaps` and `/zenwave-test-data`, and are also picked up
+  `/zenwave-fill-gaps`, `/zenwave-test-data` and `/zenwave-test-scenarios`, and are also picked up
   automatically from their descriptions.
 - Fill in `docs/zenwave-sdd-overlay.md` (shape, org prefix, paths, build and
   regenerate commands), then add to `AGENTS.md` / `CLAUDE.md`:
@@ -328,13 +329,30 @@ message). On Arcadia, 8 of 11 listener mappings would have thrown a
 ```
 
 or: *"Regenerate data.sql and data/jpa/\*.json with the zenwave-test-data skill,
-using docs/zenwave-sdd-overlay.md."* After a model change: *"Refresh the test data
-with zenwave-test-data: keep existing chains and ids, add the new columns, add
-rows only for new lifecycle states."*
+using docs/zenwave-sdd-overlay.md."* After a model change, refresh a basic set
+with `zenwave-test-data`: keep existing chains and ids, add the new columns, and
+add rows only for new entities. Refresh a scenario set with
+`zenwave-test-scenarios`: keep its chains and ids, add the new columns, and add
+coverage for new lifecycle states, branches and outcomes.
 
 The skill runs `scripts/export-ddl.sh` itself. It boots one repository test with
 the schema-generation settings as `-D` flags, so the project needs no DDL
 configuration.
+
+`zenwave-test-data` writes the **basic** set: one consistent example per entity,
+enough for the repository tests and for loading the in-memory service tests. Before
+writing service or flow tests, replace it with the **scenario** set:
+
+```text
+/zenwave-test-scenarios
+```
+
+It lists every case the tests need (each `@transition(from:)` state, each ZFL branch
+and outcome, timers, redelivery, the statuses clients read), writes one chain per case,
+and lists the assumptions it made for open questions. Run it after Step 2: it reads the
+gap report's test-fixture finding and open questions when the report exists. Refresh
+a scenario set with `zenwave-test-scenarios`, not `zenwave-test-data`, or the
+scenario rows are lost.
 
 ### Step 5 — Implement through Spec Kit features 🧪
 
@@ -399,7 +417,8 @@ Edit ZFL/ZDL → validate → regenerate → Step 1 → gap report → refresh t
 | Validate a ZDL | `jbang zw -p ZdlToJsonPlugin zdlFile=<f>.zdl > /dev/null` | same |
 | Find what's missing | `/zenwave-gap-report` | "Run zenwave-gap-report with the overlay" |
 | Implement a finding | `/zenwave-fill-gaps G-OC-03` | "Implement G-OC-03 following zenwave-fill-gaps" |
-| (Re)generate test data | `/zenwave-test-data` | "Regenerate test data with zenwave-test-data" |
+| (Re)generate test data (basic) | `/zenwave-test-data` | "Regenerate test data with zenwave-test-data" |
+| Generate scenario test data | `/zenwave-test-scenarios` | "Generate scenario fixtures with zenwave-test-scenarios" |
 | Export the DDL only | `bash .claude/skills/zenwave-test-data/scripts/export-ddl.sh` | same |
 | Spec a flow | `/speckit-specify …` (Step 5) | `/speckit.specify …` |
 | Hand tasks to another agent | — | "Implement the unchecked tasks in specs/NNN-…/tasks.md" |

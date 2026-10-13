@@ -1,6 +1,6 @@
 ---
 name: zenwave-test-data
-description: Generate or refresh the test data of a ZenWave-generated Spring Boot + JPA backend - src/test/resources/data.sql for the repository integration tests and src/test/resources/data/jpa/<Entity>/<n>.json for the in-memory service tests - from the DDL Hibernate actually runs, the ZDL lifecycles and the ZFL flows, so both files agree with each other and cover every state the commands need. Use after (re)generating code, after changing ZDL entities, or when data.sql / fixture JSON is missing, stale or fails to load.
+description: Generate or refresh the basic test data of a ZenWave-generated Spring Boot + JPA backend - src/test/resources/data.sql for the repository integration tests and src/test/resources/data/jpa/<Entity>/<n>.json for the in-memory service tests - from the DDL Hibernate actually runs, with one consistent example per entity so both files load and agree with each other. Use after (re)generating code, after changing ZDL entities, or when data.sql / fixture JSON is missing, stale or fails to load. For one fixture per command precondition, alternative branch and failure path, use zenwave-test-scenarios instead.
 ---
 
 # ZenWave Test Data
@@ -9,13 +9,35 @@ ZenWave generates `data.sql` and one stub `data/jpa/<Entity>/1.json` per entity
 **once** (`skipOverwrite`). After that they belong to the developer and are *not*
 updated when the model changes. This skill (re)writes them.
 
+This is the **basic** data set: one consistent example of every entity. It's enough
+for the generated repository tests and for loading the in-memory service tests, and
+it's cheap to produce. When tests need a fixture for every state a command starts
+from, every alternative branch and every failure path, use
+[zenwave-test-scenarios](../zenwave-test-scenarios/SKILL.md). It builds on this
+skill: same DDL export, same file formats, same validation.
+
+## Authorization
+
+An explicit invocation of `$zenwave-test-data` authorizes the complete workflow:
+
+- exporting the DDL, including the exporter's Hibernate `drop-and-create` action
+  against the project's configured **test** database;
+- rewriting `src/test/resources/data.sql` and
+  `src/test/resources/data/jpa/**`;
+- running the repository and service test suites specified below.
+
+Do not request a separate confirmation for these actions. Ask only before an
+action outside this workflow, such as targeting a production database, changing
+application or model sources, publishing artifacts, or modifying external
+systems unrelated to the project's test environment.
+
 Work from three inputs, each authoritative for one thing:
 
 | Input | Authoritative for |
 |---|---|
 | **DDL** (`target/ddl/schema.sql`) | table and column names, types, `not null`, `unique`, enum `check` values, sequence names and increments, `jsonb` / `array` columns |
 | **JPA entity classes** (`src/main/**/domain/*.kt|java`) | JSON property names for the fixture files and for the contents of `jsonb` columns (Jackson uses property names, not `@Column` names) |
-| **ZDL + ZFL** | which lifecycle states must exist (`@transition(from: ...)`), and how records chain across bounded contexts (shared business keys such as `orderId`, `sku`, `customerId`) |
+| **ZDL + ZFL** | how records chain across bounded contexts (shared business keys such as `orderId`, `sku`, `customerId`), and which lifecycle states are consistent with each other at a given point of the flow |
 
 Never derive column or sequence names from entity names yourself. Read them from the DDL.
 
@@ -55,27 +77,29 @@ spring.jpa.properties.hibernate.format_sql=true
   module wasn't regenerated.
 - Ignore framework tables (Spring Modulith `event_publication`, Spring Batch, etc.).
 
-## 2. Design the scenarios before writing rows
+## 2. Design the rows: one consistent example
 
-Don't aim for "one row per table". Aim for **one row per precondition state that a
-command or test needs**, and keep the rows consistent across bounded contexts.
+Aim for **one valid row per entity**, all belonging to one chain, consistent across
+bounded contexts. Covering every command precondition and branch is
+[zenwave-test-scenarios](../zenwave-test-scenarios/SKILL.md)'s job, not this one's.
 
-1. For each aggregate, list the states that appear in any `@transition(from: ...)`
-   and in any flow step. Each one needs at least one row (e.g. Order `CREATED` for
-   `confirmOrder`; Payment `FAILED` for `retryPayment`; Payment `AUTHORIZED` for
-   `capturePayment`/`voidPayment`; an inventory position with 0 available for the
-   "stock unavailable" branch).
-2. Group the rows into **scenario chains** that follow the ZFL, keyed by business
-   ids (`ORD-001`, `SKU`, `CUST-001`…). Every aggregate in a chain must be in a
-   state that is reachable at the same point of the flow. For example, an order
-   `CONFIRMED` implies its reservations are `CONFIRMED`, its payment is
+1. Pick one **chain** along the main ZFL path, keyed by business ids (`ORD-001`,
+   `SKU-001`, `CUST-001`…), and stop it at a single point of the flow. Every
+   aggregate in the chain must be in a state reachable at that point. For example,
+   an order `CONFIRMED` implies its reservations are `CONFIRMED`, its payment is
    `AUTHORIZED` or later, and its fulfillment is `SCHEDULED` or absent.
-3. Row 1 of every table must exist and be valid. Generated repository tests call
+2. Add a second row to a table only when the data can't be valid without it: a
+   `unique` column, a required parent, or a one-to-many relationship the model
+   states.
+3. Entities that no flow touches (backoffice, catalog) get one valid row with the
+   same business keys as the chain where they share them (`sku`).
+4. Row 1 of every table must exist and be valid. Generated repository tests call
    `findById(1)`.
-4. Respect every `unique` column in the DDL (e.g. `payment.order_id` unique means
-   one payment per order across all chains).
-5. Write the scenario matrix as the header comment of `data.sql`:
-   `chain | business ids | state per aggregate | used by (command/test)`.
+5. Respect every `unique` column in the DDL.
+6. Derived values must agree with the rows they summarize (e.g. inventory counters
+   with the reservation quantities, order totals with the lines).
+7. Write the chain as the header comment of `data.sql`:
+   `chain | business ids | state per aggregate | used by`.
 
 ## 3. Write `data.sql`
 
@@ -152,5 +176,9 @@ mvn -Dtest='*ServiceTest' -Dsurefire.failIfNoSpecifiedTests=false test
 ## Refreshing after a model change
 
 Update in place instead of rewriting. Keep existing chains and ids, add the new
-columns/properties to every row, and add rows only for new states. Tests may
+columns/properties to every row, and add rows only for new entities. Tests may
 already reference existing business ids.
+
+If the data set was written by zenwave-test-scenarios (its header has a coverage
+matrix), refresh it with that skill instead. This skill would drop the scenario
+rows the tests depend on.

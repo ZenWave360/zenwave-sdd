@@ -1,8 +1,9 @@
 # <Project> — ZenWave SDD Overlay
 
 Project-specific inputs for the zenwave-sdd skills (`zenwave-gap-report`,
-`zenwave-fill-gaps`, `zenwave-test-data`). Agents read this file first, then the
-skill. Reference it from the project's `AGENTS.md` / `CLAUDE.md`.
+`zenwave-fill-gaps`, `zenwave-test-data`, `zenwave-test-scenarios`). Agents read
+this file first, then the skill. Reference it from the project's `AGENTS.md` /
+`CLAUDE.md`.
 
 ## Where things are
 
