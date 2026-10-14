@@ -11,13 +11,37 @@ Work one finding (or one Spec Kit task) at a time.
 ## Before touching code
 
 1. **Read the finding and its model reference.** Re-open the ZFL step and the ZDL
-   method. The model is the spec; the report is only an index into it.
-2. **Model gap (M-*) or unanswered open question (Q-*) still open? Stop.** Don't
-   work around it in code. Propose the ZDL/ZFL change, and after it's accepted:
-   edit the ZDL → regenerate with `zenwave-scripts.zw` (the project overlay says
-   how) → re-run the gap report. Hand-adding a field that ZDL doesn't own will be
-   lost or will drift.
-3. **Know what is safe to edit.** ZenWave marks files as *generated once*
+   method (the project overlay, `docs/zenwave-sdd-overlay.md`, says where the model
+   files are). The model is the spec; the report is only an index into it.
+2. **Check the gap report's model readiness verdict.** If it is NOT READY for the
+   flow you're working on, or it has no verdict, stop before touching code and
+   hand over to a human (see below).
+3. **Model gap (M-*) or unanswered open question (Q-*) still open? Stop.** Don't
+   work around it in code, and **never edit `*.zfl` or `*.zdl`**, not even after
+   someone agrees with the change, and not even when it looks trivial. Don't
+   regenerate either. The models are human-owned: a person changes them,
+   regenerates and re-runs the gap report. Hand-adding a field that ZDL doesn't
+   own will be lost or will drift.
+
+   The same applies when you find, mid-task, that the feature can't be
+   implemented with the current models and generated structure: stop that feature,
+   leave the code you haven't finished uncommitted or reverted, and hand over.
+
+   **Hand-over to a human.** End the turn with this, and don't continue on that
+   feature until they answer:
+
+   ```markdown
+   ⛔ Blocked: the current models can't implement <feature / task id>.
+   - Finding: <M-/Q- id, or "new: proposed M-<nn>">
+   - Model refs: <file.zfl:line>, <file.zdl:line>
+   - What is missing: <field / event / command / state / listener / call>, and why
+     the current models and generated code can't express it
+   - What I tried or checked: <short>
+   - Options (for you to decide and apply): (a) <model change> → <consequence>;
+     (b) <alternative> → <consequence>
+   - Unaffected work I can still do: <task ids, or "none">
+   ```
+4. **Know what is safe to edit.** ZenWave marks files as *generated once*
    (developer-owned, e.g. `*ServiceImpl`, `*ServiceMapper`, `*EventsListenerMapper`,
    listeners, tests) or *regenerated* (e.g. DTOs, domain events, `*Transitions`). Only edit generated-once files. If a regenerated file is
    wrong, the fix belongs in ZDL or in a generator template.
@@ -94,9 +118,10 @@ in-memory test config. Real adapters are a separate task.
   `application*.yml`, and handle poison messages (DLQ/retry settings). Outgoing
   events go through the AsyncAPI-generated producer, so never publish to Kafka by hand.
 - **Modulith:** if the listener for a ZFL edge is missing (common for
-  **same-module** events), the fix is a local `@listener(event: ...)` in the ZDL
-  plus regeneration. Only as a stop-gap, add an `@ApplicationModuleListener`
-  method to the generated-once listener class.
+  **same-module** events), it's a model gap: the fix is a local
+  `@listener(event: ...)` in the ZDL plus regeneration, done by a human. Stop and
+  hand over. Don't hand-add an `@ApplicationModuleListener` as a stop-gap unless
+  the human explicitly asks for one.
 - Timers (`@time`, `@timer`, `@actor(Scheduler)`): implement with `@Scheduled`
   polling on a persisted deadline (e.g. `expiresAt`) unless the project overlay
   says otherwise. Use an injected `Clock`.
@@ -181,4 +206,5 @@ timestamp is not empty when that state hasn't been reached).
 - Mark the finding done in the report or in `tasks.md` (`[X]`), with a short note on
   what changed.
 - If the work surfaced a new rule or a model issue, add it as a new Q-/M- entry
-  instead of deciding it silently.
+  instead of deciding it silently. A new M- entry blocks its feature: hand over
+  as described in "Before touching code".

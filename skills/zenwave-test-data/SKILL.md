@@ -39,6 +39,10 @@ Work from three inputs, each authoritative for one thing:
 | **JPA entity classes** (`src/main/**/domain/*.kt|java`) | JSON property names for the fixture files and for the contents of `jsonb` columns (Jackson uses property names, not `@Column` names) |
 | **ZDL + ZFL** | how records chain across bounded contexts (shared business keys such as `orderId`, `sku`, `customerId`), and which lifecycle states are consistent with each other at a given point of the flow |
 
+Find the ZDL and ZFL files through the project overlay (`docs/zenwave-sdd-overlay.md`);
+they are often in other repos or in a packaged jar. If the overlay is missing or its
+paths don't resolve, ask. Don't guess.
+
 Never derive column or sequence names from entity names yourself. Read them from the DDL.
 
 ## 1. Get the DDL

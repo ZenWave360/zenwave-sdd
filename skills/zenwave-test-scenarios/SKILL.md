@@ -16,9 +16,9 @@ times more rows, and has to keep them consistent. Use it when tests are about to
 written: before implementing behavior, after a gap report, before writing flow
 tests.
 
-It changes **test resources only**. It never adds states, fields or columns. If a
-case can't be expressed with the current model, it's a model gap: list it and skip
-the row.
+It changes **test resources only**. It never adds states, fields or columns, and
+never edits `*.zfl` or `*.zdl`. If a case can't be expressed with the current model,
+it's a model gap: list it, skip the row, and report it so a human can decide.
 
 ## Authorization
 

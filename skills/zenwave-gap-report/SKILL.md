@@ -21,7 +21,15 @@ down as a report that a developer, an agent, or Spec Kit `tasks.md` can act on.
   you report must name the ZFL/ZDL line that defines the expected behavior.
 - **ZDL owns structure.** If a gap can't be closed without a new field, input,
   event or command, it's a **model gap**. Report it against the ZDL, not the code.
-  The fix is to edit ZDL and regenerate, never to hand-add structure.
+  Closing it is a human decision: a person changes the ZFL/ZDL and regenerates.
+  Never hand-add the structure to code.
+- **Never edit the models.** This skill, and every agent acting on its report,
+  leaves `*.zfl` and `*.zdl` untouched. Propose model changes in the report, as
+  options for a human to choose from, and never apply them.
+- **Say up front whether the models are good enough.** The report opens with a
+  model readiness verdict (step 9). If the current models and generated
+  structure can't support the flows, implementation must not start, and the
+  report has to make that impossible to miss.
 - **Never invent business rules.** If ZFL/ZDL doesn't say (validation limits,
   retry counts, which of two events wins), write it as an **open question**. Don't
   write a guess.
@@ -31,8 +39,16 @@ down as a report that a developer, an agent, or Spec Kit `tasks.md` can act on.
 
 ## Inputs to locate first
 
-Find these before you start. A project overlay skill (e.g.
-`<architecture-repo>/skills/<project>-zenwave-overlay.md`) usually lists them.
+Find these before you start. The project overlay
+(`docs/zenwave-sdd-overlay.md` in the implementation repo, see
+`templates/project-overlay.md`) lists where each one lives. The models are often
+in other repos (an architecture repo for ZFL, an API repo for ZDL) or only inside
+a packaged jar that `zenwave-scripts.zw` imports. If the overlay is missing, still
+has `<placeholders>`, or its paths don't resolve, stop and ask. Don't guess model
+locations, and don't audit without the ZFL. When the overlay gives both a working
+copy and a packaged copy of the ZDLs, run its staleness check: the generated code
+reflects the packaged copy, so a difference is reported as "regenerate first", not
+as code gaps.
 
 1. ZFL flow files (`*.zfl`) - the business flows.
 2. ZDL files (`*.zdl`) - one per bounded context.
@@ -218,7 +234,22 @@ to `String productId`), or a field with no source at all.
 
 ### 9. Write the report
 
-Use [report-template.md](report-template.md). Group findings as
+Use [report-template.md](report-template.md).
+
+**Start with the model readiness verdict**, right after the header table and
+before the summary:
+
+- **NOT READY** if there is at least one open M-\* finding, or one open Q-\* whose
+  answer could change the models. Name every blocking id, and for each flow say
+  whether it can be implemented as modeled. List the decisions the human must
+  take, each with its options, and state that agents must not start or continue
+  implementation of the affected flows, and must not edit ZFL/ZDL to get unblocked.
+- **READY** only when no such finding is open. Say so in one line.
+
+Never soften a NOT READY verdict (no "mostly ready", "ready with workarounds").
+A flow with a model gap is blocked even if most of its code gaps could be filled.
+
+Group findings as
 **flow → bounded context → artifact**, so that:
 
 - in a **modulith**, one ZFL flow = one Spec Kit feature, with one phase per
@@ -251,7 +282,8 @@ feature (`specs/NNN-<flow>/`):
 | Report section | Spec Kit artifact |
 |---|---|
 | Traceability table + findings for that flow | `research.md` (copy the flow's slice; plan cites it) |
-| Model gaps (M-*) and open questions (Q-*) | `/speckit-clarify` questions; answers go back into ZFL/ZDL, not into the spec |
+| Model readiness verdict | the gate before `/speckit-plan`: NOT READY stops the feature until a human has changed the models, regenerated and re-run this report |
+| Model gaps (M-*) and open questions (Q-*) | `/speckit-clarify` questions for the human; a human applies the model-changing answers to ZFL/ZDL (never the agent), not to the spec |
 | Code findings (G-*, X-*) for that flow | seed tasks for `/speckit-tasks`, keeping the ids (`T012 [G-OC-03] ...`) |
 | Baseline section | a separate `000-<bc>-baseline` feature |
 

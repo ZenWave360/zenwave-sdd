@@ -18,10 +18,18 @@ models, not a design to revisit.
   MUST NOT redefine, restate or re-derive them. `/speckit-plan` MUST NOT write a
   `data-model.md` or `contracts/` for structure that the ZDL or the generated
   OpenAPI/AsyncAPI already declare. It cross-references them instead.
+- The ZFL and ZDL files are human-owned. Agents MUST NOT create, edit or
+  "fix" them, not even to close a model gap, not even when the change looks
+  obvious. Only a human changes the models, outside the agentic implementation.
 - When a feature needs structure that the models lack (a field, input, event,
-  command, state or transition), that is a **model gap**. It is raised through
-  `/speckit-clarify` and fixed by editing the ZFL/ZDL and regenerating, never by
-  hand-writing the structure in code.
+  command, state or transition), that is a **model gap**. The agent MUST stop
+  work on that feature and hand it to a human with enough context to decide: the
+  finding id, the ZFL/ZDL lines involved, what is missing and why the current
+  models and generated code can't express it, and the options with their
+  consequences. It is never closed by hand-writing the structure in code, and
+  never by the agent editing the models.
+- Implementation (`/speckit-plan` onward) MUST NOT start while the gap report's
+  model readiness verdict is **NOT READY**.
 - Behavior the models can't express (service method bodies, branching on
   outcomes, calls to other contexts, adapters to external systems, mapper
   configuration, tests and test data) is implemented in the generated-once,

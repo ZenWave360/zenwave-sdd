@@ -4,8 +4,10 @@ Spec-driven development on top of ZenWave: agent skills and Spec Kit integration
 that take a ZenWave project (microservices with Kafka + AsyncAPI, or a modulith) from "structure generated" to "flows
 implemented, tested and tracked".
 
-- **[MANUAL.md](MANUAL.md)**: the workflow, installation, invocation and release
-  plan. Start here.
+- **[GETTING-STARTED.md](GETTING-STARTED.md)**: step by step, from installing the
+  skills to a verified flow. Start here.
+- **[MANUAL.md](MANUAL.md)**: the workflow in depth, the reasoning behind it, and
+  the release plan.
 - **[skills/](skills/)**: Agent Skills (`SKILL.md` format)
   - `zfl-to-zdl`: ZFL flow → one ZDL per bounded context (microservices or modulith)
   - `zenwave-gap-report`: find the behavior the generator left out (read-only)
