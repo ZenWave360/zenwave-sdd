@@ -27,8 +27,7 @@ be structurally valid, grounded in the flow, and conservative about assumptions.
 
 Run it only when a human explicitly asks for it. It never edits the input ZFL, and
 it never overwrites or patches an existing ZDL unless the human asks for that file
-by name. Other skills and implementation work (gap report, fill-gaps, Spec Kit
-implement) must not invoke it to close model gaps. Those go back to a human.
+by name. Other skills and implementation work (gap report, fill-gaps) must not invoke it to close model gaps. Those go back to a human.
 
 ## Inputs
 

@@ -2,7 +2,7 @@
 
 How to take a project generated with the ZenWave archetype (or any ZenWave SDK project) from "structure generated" to "flows implemented and tested", step by step. Everything runs from the root of **your project**, not this repo. The same guide ships in the README of every project created from the ZenWave Java and Kotlin archetypes.
 
-The generator creates the structure: entities, services, events, mappers and test skeletons. It leaves the behavior as `TODO`s. The [zenwave-sdd](https://github.com/ZenWave360/zenwave-sdd) skills find and fill those gaps, and [GitHub Spec Kit](https://github.com/github/spec-kit) gives the work a standard shape (`spec.md` → `plan.md` → `tasks.md`). Background and reasoning are in the [zenwave-sdd manual](MANUAL.md); this guide is enough to work.
+The generator creates the structure: entities, services, events, mappers and test skeletons. It leaves the behavior as `TODO`s. The [zenwave-sdd](https://github.com/ZenWave360/zenwave-sdd) skills find and fill those gaps. Background and reasoning are in the [zenwave-sdd manual](MANUAL.md); this guide is enough to work.
 
 One rule above all: **models own structure.** If a behavior needs a field, event, command or state that the ZDL doesn't have, fix the ZDL and regenerate. Never hand-add it to code.
 
@@ -10,20 +10,20 @@ One rule above all: **models own structure.** If a behavior needs a field, event
 
 **The steps, in order:**
 
-0. [One-time setup](#step-0--one-time-setup): skills, models, overlay, constitution
+0. [One-time setup](#step-0--one-time-setup): skills, models, overlay
 1. [Check the generated baseline](#step-1--check-the-generated-baseline)
 2. [Generate basic test data](#step-2--generate-basic-test-data) (JPA)
 3. [Run the gap report](#step-3--run-the-gap-report)
 4. [Fix the model gaps](#step-4--fix-the-model-gaps-repeat-until-none-are-left) (repeat 1–4 until none are left)
 5. [Generate scenario test data](#step-5--generate-scenario-test-data) (JPA)
-6. [Spec and implement a flow](#step-6--spec-and-implement-a-flow)
+6. [Implement a flow](#step-6--implement-a-flow)
 7. [Verify and close](#step-7--verify-and-close)
 
 ## Step 0 — One-time setup
 
 Do this once, after the first code generation has been committed.
 
-### 0.1 Install the skills and Spec Kit
+### 0.1 Install the skills
 
 To upgrade later, run it again with a new `ZWSDD` tag and review the `git diff`.
 
@@ -39,23 +39,16 @@ done
 
 mkdir -p docs
 [ -f docs/zenwave-sdd-overlay.md ] || cp "$tmp"/templates/project-overlay.md docs/zenwave-sdd-overlay.md   # never overwrite a filled-in overlay
-cp "$tmp"/speckit/constitution-zenwave.md docs/
 echo "$ZWSDD" > docs/zenwave-sdd.version
 rm -rf "$tmp"
-
-# Spec Kit, for every agent you use (claude is the default)
-uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
-specify init --here --integration claude --script sh
-specify integration install codex
-specify integration install grok
-specify integration use claude
 
 # point every agent at the overlay
 cat > AGENTS.md <<'EOF'
 # Agent instructions
 - Before running any zenwave-* skill, read docs/zenwave-sdd-overlay.md.
-- Models own structure: never hand-edit generated structure. Never edit ZFL/ZDL: if a feature can't be implemented with the current models and generated structure, stop and hand it to a human with the finding, model lines and options (docs/constitution-zenwave.md).
-- Spec Kit features live in specs/NNN-<feature>/; the constitution is .specify/memory/constitution.md.
+- Models own structure: never hand-edit generated structure. The ZFL and ZDL files are human-owned: never create, edit or "fix" them. If a feature can't be implemented with the current models and generated structure, stop and hand it to a human with the finding id, the ZFL/ZDL lines involved, what is missing and the options with their consequences.
+- Regeneration is a human action: never overwrite the working tree by regenerating. Regenerate into a scratch folder to compare if needed.
+- Don't start implementing a flow while the gap report's model readiness verdict is NOT READY.
 EOF
 printf '@AGENTS.md\n' > CLAUDE.md
 ```
@@ -110,20 +103,11 @@ Check that no template placeholder is left. This must print nothing:
 grep -nE '<(path|org|commands|jdk|Project|link|list|\.\.\.)>' docs/zenwave-sdd-overlay.md
 ```
 
-### 0.4 Create the Spec Kit constitution
-
-In the agent:
-
-```text
-/speckit-constitution Capture this project's existing practices (don't invent standards).
-Include the article in docs/constitution-zenwave.md verbatim.
-```
-
-You get `.specify/memory/constitution.md`. Read it, then commit everything from Step 0:
+Commit everything from Step 0:
 
 ```bash
-git add .claude .agents .grok .specify docs AGENTS.md CLAUDE.md
-git commit -m "chore: set up zenwave-sdd and Spec Kit"
+git add .claude .agents .grok docs AGENTS.md CLAUDE.md
+git commit -m "chore: set up zenwave-sdd"
 ```
 
 ## Step 1 — Check the generated baseline
@@ -167,7 +151,7 @@ The report is read-only: it doesn't touch `src/`. You get `docs/zenwave-gap-repo
 - **M-\*** model gaps: missing fields, events, commands or states. You fix them in the ZDL (Step 4).
 - **Q-\*** open questions: business decisions only you can take.
 - **G-\*** code gaps per bounded context, and **X-\*** cross-cutting ones. Fixed in Step 6.
-- a traceability table per flow, and a suggested Spec Kit mapping.
+- a traceability table per flow, and a suggested work plan.
 
 Commit the report. Its diff across runs is your progress log.
 
@@ -203,52 +187,22 @@ You get the same files as Step 2, but with a fixture chain for every case the te
 
 From now on, refresh the data with `/zenwave-test-scenarios`, **never** `/zenwave-test-data`, or the scenario rows are lost.
 
-## Step 6 — Spec and implement a flow
+## Step 6 — Implement a flow
 
-One Spec Kit feature per ZFL flow in a modulith (`NNN-<flow>`), or this repo's slice of each flow in microservices, plus `000-<bounded-context>-baseline` for gaps outside any flow. For each feature, type these into the agent in order, and read what each one writes before the next.
+One unit of work per ZFL flow in a modulith, or this repo's slice of each flow in microservices, plus the baseline findings for gaps outside any flow. For each one, type this into the agent and read what it writes:
 
-1. Specify:
+```text
+Implement <FlowName> (<path/to/flow.zfl>) using the zenwave-fill-gaps skill.
+Its findings are in docs/zenwave-gap-report.md. Work them in flow order, one bounded
+context at a time and one finding at a time, keeping the finding ids in the commit messages.
+If a finding needs a new field, event, command or state, stop and hand it to me.
+```
 
-   ```text
-   /speckit-specify <FlowName> from <path/to/flow.zfl>.
-   Behavior only: reference ZFL steps and ZDL elements by their exact names.
-   The findings for this flow are in docs/zenwave-gap-report.md.
-   ```
+If the agent stops on a model gap, or one of its questions needs new structure, go back to Step 4. Don't write structure into the code.
 
-2. Clarify, and answer its questions. If an answer needs a new field, event or command, go back to Step 4. Don't write structure into the spec.
+You get the code and tests for the flow. Re-run `/zenwave-gap-report` after every session: it shows what's still missing.
 
-   ```text
-   /speckit-clarify
-   ```
-
-3. Plan:
-
-   ```text
-   /speckit-plan Structure is fixed by the ZDL and the generated code (constitution).
-   Do NOT write data-model.md or contracts/: add a "ZDL cross-reference" table
-   (element | file:line | used by) instead. Copy this flow's slice of
-   docs/zenwave-gap-report.md into research.md.
-   ```
-
-4. Break into tasks:
-
-   ```text
-   /speckit-tasks Seed tasks from the gap-report findings for this flow, keeping their ids
-   (e.g. "T012 [G-OC-03] confirmOrder: load by orderId, guard, CONFIRMED, save, emit").
-   One phase per bounded context in flow order, then flow-level tests.
-   ```
-
-5. Check, implement, and look for anything left:
-
-   ```text
-   /speckit-analyze
-   /speckit-implement Use the zenwave-fill-gaps skill for each task.
-   /speckit-converge
-   ```
-
-You get `specs/NNN-<flow>/` (`spec.md`, `plan.md`, `tasks.md`), and the code and tests. `/speckit-converge` only adds tasks for what's still missing, so it's safe to run after every session.
-
-To fix a single finding without Spec Kit: `/zenwave-fill-gaps <finding-id>`.
+To fix a single finding: `/zenwave-fill-gaps <finding-id>`.
 
 ## Step 7 — Verify and close
 
@@ -260,7 +214,7 @@ Then run `/zenwave-gap-report` again. **Done when** `mvn test` is green and the 
 
 ## Later: when the models change
 
-Step 4 (edit, lint, rebuild the jar if any, regenerate, review) → Step 1 → Step 2 (or `/zenwave-test-scenarios` if you already have scenario data) → Step 3 → `/speckit-converge` on each affected feature, or a new feature for new behavior.
+Step 4 (edit, lint, rebuild the jar if any, regenerate, review) → Step 1 → Step 2 (or `/zenwave-test-scenarios` if you already have scenario data) → Step 3 → Step 6 for each affected flow, or for new behavior.
 
 ## If something goes wrong
 

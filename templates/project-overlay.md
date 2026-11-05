@@ -39,9 +39,8 @@ explain how to resolve them here (a table from each `@zdl` path to its file).
 - Organization prefix `<org>` (ids `urn:<org>:<domain>:<subdomain>`, packages `<org>.<domain>.<subdomain>`): `<e.g. com.example>`
 - Base package and module packages: `<...>`
 - Persistence: `jpa` | `mongodb`
-- Spec Kit feature rule: one feature per ZFL flow (`NNN-<flow>`) in a modulith, or
-  this repo's bounded-context slice of each flow in microservices, plus
-  `000-<bc>-baseline` for work outside any flow.
+- Unit of work: one ZFL flow in a modulith, or this repo's bounded-context slice of
+  each flow in microservices, plus a baseline for work outside any flow.
 
 ## Build, generate, test
 

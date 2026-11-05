@@ -8,7 +8,7 @@ description: Audit a ZenWave-generated backend (Kotlin or Java, Spring Boot) aga
 ZenWave generates the *structure* of a service from ZDL (entities, services, DTOs,
 events, listeners, mappers, controllers, test skeletons) and deliberately leaves the
 *behavior* to the developer. This skill finds that missing behavior and writes it
-down as a report that a developer, an agent, or Spec Kit `tasks.md` can act on.
+down as a report that a developer, or an agent can act on.
 
 **This skill is read-only.** Do not edit `src/`. Fixing is done by
 [zenwave-fill-gaps](../zenwave-fill-gaps/SKILL.md), which uses the report as input.
@@ -252,10 +252,10 @@ A flow with a model gap is blocked even if most of its code gaps could be filled
 Group findings as
 **flow → bounded context → artifact**, so that:
 
-- in a **modulith**, one ZFL flow = one Spec Kit feature, with one phase per
+- in a **modulith**, one ZFL flow = one unit of work, with one phase per
   bounded context in flow order;
 - in **microservices**, each service repo takes only its bounded context's
-  section as its feature, and links back to the flow.
+  section as its unit of work, and links back to the flow.
 
 Put findings that no flow touches (backoffice CRUD, unused endpoints) under
 **Baseline** for each bounded context.
@@ -276,16 +276,5 @@ Write to `docs/zenwave-gap-report.md` in the implementation repo, unless the
 project overlay says otherwise. This whole-service report is the baseline; re-run it
 after every regeneration and keep it under version control so its diff shows what changed.
 
-When the repo uses Spec Kit (a `.specify/` folder exists), the report also feeds each
-feature (`specs/NNN-<flow>/`):
-
-| Report section | Spec Kit artifact |
-|---|---|
-| Traceability table + findings for that flow | `research.md` (copy the flow's slice; plan cites it) |
-| Model readiness verdict | the gate before `/speckit-plan`: NOT READY stops the feature until a human has changed the models, regenerated and re-run this report |
-| Model gaps (M-*) and open questions (Q-*) | `/speckit-clarify` questions for the human; a human applies the model-changing answers to ZFL/ZDL (never the agent), not to the spec |
-| Code findings (G-*, X-*) for that flow | seed tasks for `/speckit-tasks`, keeping the ids (`T012 [G-OC-03] ...`) |
-| Baseline section | a separate `000-<bc>-baseline` feature |
-
 Keep the finding ids stable across re-runs (same gap = same id), so tasks and
-converge findings can refer to them.
+commits can refer to them.

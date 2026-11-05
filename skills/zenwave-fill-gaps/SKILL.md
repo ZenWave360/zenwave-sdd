@@ -1,12 +1,12 @@
 ---
 name: zenwave-fill-gaps
-description: Implement the missing behavior in a ZenWave-generated Spring Boot backend (Kotlin or Java) - service method bodies, cross-context calls, event listener wiring, MapStruct mappings, error mapping, test fixtures and tests - working from a zenwave-gap-report and the ZFL/ZDL models. Use when asked to implement, fix or complete findings from the gap report, or a Spec Kit task that points at one.
+description: Implement the missing behavior in a ZenWave-generated Spring Boot backend (Kotlin or Java) - service method bodies, cross-context calls, event listener wiring, MapStruct mappings, error mapping, test fixtures and tests - working from a zenwave-gap-report and the ZFL/ZDL models. Use when asked to implement, fix or complete findings from the gap report, or a task that points at one.
 ---
 
 # ZenWave Fill Gaps
 
 Turns findings from [zenwave-gap-report](../zenwave-gap-report/SKILL.md) into working code.
-Work one finding (or one Spec Kit task) at a time.
+Work one finding (or one task) at a time.
 
 ## Before touching code
 

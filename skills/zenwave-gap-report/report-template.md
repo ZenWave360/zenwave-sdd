@@ -72,15 +72,15 @@ decision is needed.>
 | Id | Sev | Gap |
 |---|---|---|
 
-## 5. Open questions (→ `/speckit.clarify`)
+## 5. Open questions (→ a human)
 
 | Id | Question | Blocks |
 |---|---|---|
 
-## 6. Suggested Spec Kit mapping
+## 6. Suggested work plan
 
-<Modulith: one feature per flow, one phase per bounded context in flow order.
-Microservice: this repo's bounded-context slice of each flow, linking to the flow spec.
-Phase 0 is always a human step: clarify → a human changes the model → regenerate → re-run this
+<Modulith: one work unit per flow, one phase per bounded context in flow order.
+Microservice: this repo's bounded-context slice of each flow, linking to the flow.
+Phase 0 is always a human step: answer the open questions → a human changes the model → regenerate → re-run this
 report. Agents don't start Phase 1 until the verdict is READY.
-Plus a `000-<bc>-baseline` feature for off-flow gaps.>
+Plus a baseline unit per bounded context for off-flow gaps.>
