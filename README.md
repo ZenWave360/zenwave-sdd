@@ -1,6 +1,6 @@
 # zenwave-sdd
 
-Spec-driven development on top of ZenWave: agent skills and Spec Kit integration
+Spec-driven development on top of ZenWave: agent skills
 that take a ZenWave project (microservices with Kafka + AsyncAPI, or a modulith) from "structure generated" to "flows
 implemented, tested and tracked".
 
@@ -14,8 +14,6 @@ implemented, tested and tracked".
   - `zenwave-fill-gaps`: implement it with ZenWave-aware patterns
   - `zenwave-test-data`: DDL-driven `data.sql` + JSON fixtures, one consistent example per entity (basic)
   - `zenwave-test-scenarios`: the same files with a fixture per command precondition, branch, failure path and outcome
-- **[speckit/](speckit/)**: Spec Kit integration (the constitution article today;
-  the extension and preset are planned)
 - **[templates/](templates/)**: the project overlay template
 
 Status: early. The skills were extracted from the Arcadia Editions reference

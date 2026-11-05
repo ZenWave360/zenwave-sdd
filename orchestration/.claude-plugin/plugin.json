@@ -1,0 +1,7 @@
+{
+  "name": "zenwave-orchestration",
+  "version": "0.1.0",
+  "description": "An orchestrator, implementer and reviewer for running a multi-repository backlog with Claude subagents, Codex and Grok: the playbook, the agents, prompt templates and the Codex task runner.",
+  "author": { "name": "Ivan Garcia Sainz-Aja" },
+  "homepage": "https://github.com/ZenWave360/zenwave-sdd/tree/main/orchestration"
+}

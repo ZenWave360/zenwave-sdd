@@ -1,0 +1,11 @@
+{
+  "name": "zenwave-sdd",
+  "owner": { "name": "ZenWave360" },
+  "plugins": [
+    {
+      "name": "zenwave-orchestration",
+      "source": "./orchestration",
+      "description": "Run a multi-repository backlog with an orchestrator, implementers and reviewers across Claude Code, Codex and Grok."
+    }
+  ]
+}
