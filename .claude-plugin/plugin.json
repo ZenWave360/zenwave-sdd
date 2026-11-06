@@ -1,0 +1,7 @@
+{
+  "name": "zenwave-sdd",
+  "version": "0.2.0-dev",
+  "description": "Skills and agents for model-driven development with ZenWave: model review, test data, the task board, the gate, and the AFK loop that implements and reviews each business flow.",
+  "author": { "name": "Ivan Garcia Sainz-Aja" },
+  "homepage": "https://github.com/ZenWave360/zenwave-sdd"
+}

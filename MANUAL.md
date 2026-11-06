@@ -1,498 +1,223 @@
-# ZenWave SDD — Manual
+# zenwave-sdd manual
 
-From "we have ZFL flows and ZDL models" to "the flows work, are tested and are
-tracked": create the project, generate its structure with the ZenWave SDK, then
-drive the rest with the zenwave-sdd skills. The manual covers
-microservices (Kafka + AsyncAPI) and moduliths.
+The [README](README.md) is the step by step. This is the method behind it, and the reference for each piece.
 
-> Just want the steps? [GETTING-STARTED.md](GETTING-STARTED.md) is the
-> step-by-step guide, with what to run, what you get and when each step is done.
-> This manual is the reference and the reasoning behind it.
+## 1. Principles
 
-> **Status legend:** ✅ available now · 🧪 available, not yet validated on a real run ·
-> 🛠 to build. Section 10 lists what's left to build and in what order.
+- **The models are the spec.** ZFL says when and why (flows, policies, outcomes, compensations, timers); ZDL says
+  what (aggregates, lifecycles, commands, events, listeners, calls); OpenAPI and AsyncAPI are the contracts. A medium
+  service fits in a couple of hundred lines that a person can read and approve, which is what prose specs cannot give
+  you at the speed an LLM writes them.
+- **People decide, agents look things up.** In the HITL loop the agents find the questions and you answer them. Facts
+  (what the code does, what a file says) are the agent's job; decisions (business rules, names, boundaries) are yours.
+- **The approved baseline is read-only for the AFK loop.** Models, contracts and test data are tagged at the gate.
+  An agent that finds them wrong writes a proposal and stops that task; it never edits them or codes around them.
+- **Models own structure.** A missing field, event, command or state is fixed in the model and regenerated, never
+  hand-added to generated code.
+- **Vertical slices.** Work is sliced along the paths of a flow, the happy path first (the tracer bullet), so every
+  slice is testable end to end. Agents left alone slice horizontally (all entities, then all services); the board
+  review is where you catch it.
+- **Test first, from approved data.** The implementer starts from a fixture you approved and the outcome the ZFL
+  names, writes the failing test, then the code. It cannot shape the test data to fit its code.
+- **Small contexts, documents as memory.** Every task runs in a fresh context sized to fit. Whatever must survive a
+  session lives in files: the models, the glossary, the ADRs, the board, the proposals.
+- **Review by a different model.** Never review code with the model that wrote it, and review per slice, not per task.
 
----
+## 2. The HITL loop
 
-## 1. The factory at a glance
-
-```
- Event storming ─► ZFL flow ─► ZDL models ─► archetype ─► ZenWave SDK ─► generated structure
-   (humans)       (business)   (zfl-to-zdl)  (new project) (zenwave-scripts.zw)      │
-                                   ▲                                                 ▼
-                                   │      ┌──────────────── zenwave-sdd ─────────────────┐
-                                   │      │ 1 baseline  2 basic data  3 gap report ──────┼─┐
-                                   └──────┼──────────────────────────── (fix ZDL, regen) ◄┘ │
-                                          │ 4 model loop  5 scenarios  6 implement  7 verify        │
-                                          └─────────────────────────────────────────────────┘
-```
-
-| Layer | Owns | Changed by |
-|---|---|---|
-| **ZFL** | when/why: flow steps, outcomes, compensations, timers | humans (event storming) |
-| **ZDL** | what: aggregates, lifecycle, commands, inputs/outputs, events, consumers, calls | humans + `zfl-to-zdl` |
-| **ZenWave archetype + SDK** | the project skeleton, and the structure generated from the ZDL, including *generated-once* stubs with TODOs | archetype once, regeneration after model changes |
-| **zenwave-sdd skills** | finding and filling the behavior the generator leaves blank | agents, following the skills |
-
-**The rule that makes it work:** *models own structure.* If a behavior can't be
-implemented without a new field, event, command or state, that is a **model gap**:
-fix it in ZFL/ZDL and regenerate. Never hand-add it to code. The ZFL and ZDL files
-are human-owned: agents never edit them, and stop and hand over when a model gap
-blocks a feature.
-
----
-
-## 2. Deployment shapes
-
-Choose the shape before writing ZDLs. The ZDL annotations, the generated code and
-how you slice the work all depend on it.
-
-| | **Microservices** (Kafka + AsyncAPI) | **Modulith** |
-|---|---|---|
-| Repos | one implementation repo per bounded context (plus its API/contract artifact) | one repo, one module per bounded context |
-| ZDL consumer annotation | `@asyncapi(api: XApi, channel: "...")`, with `asyncapi client` in `apis` | `@listener(zdl: XZdl, event: ...)` / `@listener(event: ...)`, with `zdl client` in `apis` |
-| Generated inbound code | developer-owned `*ConsumerService` adapters over AsyncAPI-generated consumer interfaces (Spring Cloud Stream) | `*EventsListener` classes with `@ApplicationModuleListener` |
-| Contracts | ZDL → OpenAPI + AsyncAPI, versioned and released per service | ZDLs packaged together (e.g. `service-all`) |
-| Synchronous calls (`@calls`) | HTTP client behind a port | the other module's service interface |
-| Archetype features | `-Dkafka=true` | `-Dmodulith=true` (implies Kafka, for externalized events) |
-| Unit of work | this repo's slice of a flow, linking to the flow | one per flow, one phase per bounded context |
-| Flow tests | per-service consume/produce tests with an embedded or Testcontainers broker, then end-to-end in an environment | Spring Modulith `Scenario` in one JVM |
-
-Record the shape in the project overlay (section 4.3). All the skills read it from there.
-
----
-
-## 3. What you need
-
-| Tool | Why | Install |
-|---|---|---|
-| JDK matching the generated project | build and tests | SDKMAN: `sdk install java 25.0.2-tem` |
-| Maven | archetype, build | SDKMAN: `sdk install maven` |
-| Docker | integration tests, DDL export, local Kafka | Docker Desktop / Rancher Desktop |
-| JBang + ZenWave CLI (`jbang zw`) | generate, validate ZDL, dump the parsed model | see zenwave360.io |
-| One or more agents | run the skills | Claude Code, Copilot, Codex, Gemini, Grok… (anything that reads Agent Skills or `AGENTS.md`) |
-
-### The skills (this repo)
-
-| Skill | What it does | Writes | Status |
+| Step | Skill | Output | Who decides |
 |---|---|---|---|
-| [`zfl-to-zdl`](skills/zfl-to-zdl/SKILL.md) | ZFL flow → one ZDL per bounded context. Shape-aware (`@asyncapi` vs `@listener`), data-lineage check, `<Command>Result` wrapper for multi-response calls, org prefix from the overlay | ZDL | ✅ v1.4 used on Arcadia (modulith) · 🧪 v1.5 shape-aware |
-| [`zenwave-gap-report`](skills/zenwave-gap-report/SKILL.md) | Audits generated code against ZFL/ZDL: model gaps, flow wiring, data lineage, service bodies, mappers, web layer, tests, open questions | report only (read-only on code) | 🧪 its procedure produced the Arcadia report; not yet run as a skill |
-| [`zenwave-fill-gaps`](skills/zenwave-fill-gaps/SKILL.md) | Implements findings with ZenWave-aware patterns (load → guard → mutate → save → emit one event, result-wrapper branching, MapStruct constants, ports and stubs, idempotent consumers). Stops on model gaps | code | 🧪 not yet run as a skill |
-| [`zenwave-test-data`](skills/zenwave-test-data/SKILL.md) | Exports the Hibernate DDL with a bundled script (no project config), then writes `data.sql` plus matching JSON fixtures: one consistent example per entity (basic, cheap) | test resources | 🧪 procedure run on Arcadia (Java: 7 rows, one chain) |
-| [`zenwave-test-scenarios`](skills/zenwave-test-scenarios/SKILL.md) | Builds a coverage matrix from ZDL lifecycles, ZFL branches and outcomes, timers, redelivery and the read side (plus the gap report if present), then writes the same files with one chain per case, assumptions listed. Reuses zenwave-test-data's DDL export, formats and validation | test resources | 🧪 new; the Kotlin Arcadia fixtures (36 rows, 8 chains) are the reference result |
-
-Project-specific knowledge (paths, shape, org prefix, build commands, decisions) goes
-in a **project overlay**, not in the skills. Template:
-[templates/project-overlay.md](templates/project-overlay.md).
-
----
-
-## 4. Setting up a new project
-
-### 4.1 Create the project with the ZenWave archetype ✅
-
-There's one archetype for Kotlin (`zenwave-kotlin-archetype`) and one for Java.
-Features: `jpa` or `mongodb` (exactly one), `kafka`, `modulith` (implies `kafka`).
-
-```bash
-mvn archetype:generate \
-  -DarchetypeGroupId=io.zenwave360.archetypes \
-  -DarchetypeArtifactId=zenwave-kotlin-archetype \
-  -DarchetypeVersion=<version> \
-  -DgroupId=com.example -DartifactId=orders-checkout-service \
-  -Dpackage=com.example.orders.checkout -Dversion=0.0.1-SNAPSHOT \
-  -DprojectName="Orders Checkout" -DprojectDescription="Orders Checkout" \
-  -Djpa=true -Dkafka=true -Dmodulith=false \
-  -DinteractiveMode=false
-```
-
-- Microservices: `-Dkafka=true -Dmodulith=false`. Modulith: `-Dmodulith=true`.
-- Leave out the feature flags and use `-DinteractiveMode=true` to be asked instead.
-- The project is git-initialized with an `Initial commit from archetype.` commit.
-- To generate into the current folder, use `-DoutputDirectory=..` with
-  `-DartifactId=<current folder name>`. The folder must not contain a `pom.xml`,
-  `.gitignore` or `README.md`.
-
-> Until the archetypes are on Maven Central, install them locally from
-> `zenwave-playground/zenwave-{kotlin,java}-archetype-baseapp`:
-> `./create-archetype.sh && (cd target/generated-sources/archetype && mvn clean install)`,
-> then use `-DarchetypeVersion=0.0.1-SNAPSHOT`.
-
-### 4.2 Generate the structure and commit the baseline ✅
-
-Point `zenwave-scripts.zw` at your ZDL(s) and generate (ZenWave VS Code extension, or
-`jbang zw`). Once it compiles:
-
-```bash
-git add -A && git commit -m "feat: generate backend from zenwave-sdk"
-git tag zenwave-generated-v1          # what you diff against, and replay from
-```
-
-### 4.3 Install the skills and write the overlay ✅
-
-Install **from a release**, not from someone's working copy. Pin a version:
-
-```bash
-ZWSDD=v0.1.0                                              # a zenwave-sdd release tag
-tmp=$(mktemp -d) && git clone -q --depth 1 --branch $ZWSDD https://github.com/ZenWave360/zenwave-sdd "$tmp"
-mkdir -p .claude/skills && cp -r "$tmp"/skills/* .claude/skills/         # Claude Code
-# other agents: copy into their skills folder (e.g. .agents/skills/), or reference them from AGENTS.md
-cp "$tmp"/templates/project-overlay.md docs/zenwave-sdd-overlay.md
-rm -rf "$tmp"
-```
-
-- Commit `.claude/skills/` (or your agent's folder) so the whole team gets the same version.
-- In Claude Code, skills are available as `/zfl-to-zdl`, `/zenwave-gap-report`,
-  `/zenwave-fill-gaps`, `/zenwave-test-data` and `/zenwave-test-scenarios`, and are also picked up
-  automatically from their descriptions.
-- Fill in `docs/zenwave-sdd-overlay.md` (shape, org prefix, paths to the ZFL and
-  ZDL files, including those in other repos or packaged jars, build and
-  regenerate commands), then add to `AGENTS.md` / `CLAUDE.md`:
-  `Before running any zenwave-* skill, read docs/zenwave-sdd-overlay.md.` and the
-  rules that keep agents inside the models:
-  - Models own structure: never hand-edit generated structure.
-  - The ZFL and ZDL files are human-owned: never create, edit or "fix" them. When a
-    feature needs structure the models lack, stop and hand it to a human with the
-    finding id, the ZFL/ZDL lines involved, what is missing and the options.
-  - Regeneration is a human action. Regenerate into a scratch folder to compare,
-    never over the working tree.
-  - Don't start implementing a flow while the gap report's verdict is NOT READY.
-
----
-
-## 5. The workflow (after generation)
-
-### Step 1 — Baseline health check ✅
-
-```bash
-mvn -DskipTests clean compile 2>&1 | tee target/compile.log
-grep -i "unmapped target" target/compile.log               # objective list of mapper gaps
-grep -rn "TODO CUSTOM_REQUIRED\|TODO: implement" src/main  # generated-once stubs
-bash .claude/skills/zenwave-test-data/scripts/export-ddl.sh   # JPA: target/ddl/schema.sql
-```
-
-Does every entity have a table, and every ZDL field a column? A module whose ZDL
-changed but whose tables and code didn't **wasn't regenerated**.
-
-### Step 2 — Basic test data 🧪 (JPA)
-
-```text
-/zenwave-test-data
-```
-
-or: *"Regenerate data.sql and data/jpa/\*.json with the zenwave-test-data skill,
-using docs/zenwave-sdd-overlay.md."* Run this before the first gap report so the
-generated project has a valid, consistent baseline data set for repository and
-in-memory service tests.
-
-The skill runs `scripts/export-ddl.sh` itself. It boots one repository test with
-the schema-generation settings as `-D` flags, so the project needs no DDL
-configuration. It writes one consistent example per entity—enough for the
-generated repository tests and for loading the in-memory service tests.
-
-After a model change, refresh the basic set with `zenwave-test-data`: keep
-existing chains and ids, add the new columns, and add rows only for new entities.
-
-### Step 3 — Gap report 🧪
-
-Before the first run, make sure the skill can reach the models. It reads
-`docs/zenwave-sdd-overlay.md` and stops if the models aren't where it says:
-
-1. The overlay is filled in (no `<placeholders>`), with the paths to the ZFL and the
-   ZDLs. They're often in other repos (`../<architecture-repo>/...`,
-   `../<api-repo>/...`): check those repos out next to this one.
-2. If `zenwave-scripts.zw` reads the ZDLs from a packaged jar (`@import` +
-   `classpath:/...`), the jar is installed and current: after a ZDL change,
-   repackage it and regenerate. The overlay names the commands and has a check
-   that the packaged ZDLs match the working copy.
-3. ZFL `@zdl(...)` paths that don't match this deployment's file layout are mapped
-   in the overlay.
-
-Then:
-
-```text
-/zenwave-gap-report
-```
-
-or, with any agent: *"Run the zenwave-gap-report skill for this repo, using
-docs/zenwave-sdd-overlay.md. Read-only: do not edit src/."*
-
-Output: `docs/zenwave-gap-report.md`. It contains model gaps (M-\*), a
-traceability table per flow, code findings per bounded context (G-\*), baseline work
-outside any flow, cross-cutting findings (X-\*), open questions (Q-\*), and a
-suggested work plan. Commit it. Its diff across re-runs is your progress log.
-
-### Step 4 — Model loop (repeat until there are no model gaps) ✅
-
-This step is **human-only**. Agents never edit ZFL/ZDL and never regenerate on
-their own: when the gap report's model readiness verdict is NOT READY, or an agent
-finds mid-task that the models can't support a feature, it stops and hands over
-with the finding, the model lines and the options.
-
-For each model gap and open question, **you decide** (these are business
-decisions), then:
-
-1. Edit the ZFL/ZDL, following `zfl-to-zdl` and the naming conventions.
-2. Validate each ZDL:
-
-   ```bash
-   jbang zw -p ZdlToJsonPlugin zdlFile=<file>.zdl > /dev/null
-   ```
-
-   - Syntax errors: `line L:C …` with exit code 1. Fix the first one; later ones
-     are often cascades.
-   - Semantic errors (unknown type, unknown event): `ZDL ERROR [path]: … [line, char]`
-     **with exit code 0**, so read stderr.
-   - `WARN … Unable to load referenced API`: a `zdl client` path is wrong, and
-     cross-model checks were skipped.
-   - Not checked today: `@transition` states missing from the lifecycle enum, and
-     data lineage. See `zw lint` in section 9.
-   - Dump the parsed model to see how a type resolved:
-     `jbang zw -p ZdlToJsonPlugin zdlFile=<file>.zdl > model.json`.
-3. Regenerate the OpenAPI/AsyncAPI declared in the ZDL, then the code
-   (`zenwave-scripts.zw`). In microservices, release the new API/contract
-   version first if other services consume it.
-4. `git diff --stat`: check that **every** module whose ZDL changed has changes, and
-   that customized generated-once files weren't overwritten (a forced `-f`
-   regeneration overwrites them).
-5. Re-run Steps 1 through 3. Update the "status after model pass N" table in the report.
-
-Before any code is written, check each consumer's *data lineage*: every required
-field of the target input must come from the triggering event (or AsyncAPI
-message). On Arcadia, 8 of 11 listener mappings would have thrown a
-`NullPointerException` on the first event, and every one was fixed in the model.
-
-### Step 5 — Scenario test data 🧪 (JPA)
-
-```text
-/zenwave-test-scenarios
-```
-
-Before writing service or flow tests, replace the basic set with the scenario set.
-It lists every case the tests need (each `@transition(from:)` state, each ZFL branch
-and outcome, timers, redelivery, the statuses clients read), writes one chain per case,
-and lists the assumptions it made for open questions. Run it after Step 3: it reads the
-gap report's test-fixture finding and open questions when the report exists. Refresh
-a scenario set with `zenwave-test-scenarios`, not `zenwave-test-data`, or the
-scenario rows are lost.
-
-### Step 6 — Implement the flows 🧪
-
-Units of work: one per flow (modulith), or this repo's slice of each flow
-(microservices), plus the baseline findings for work outside any flow. For each one,
-tell the agent:
-
-```text
-Implement <FlowName> (<path>.zfl) using the zenwave-fill-gaps skill. Its findings
-are in docs/zenwave-gap-report.md. Work them in flow order, one bounded context at a
-time and one finding at a time, keeping the finding ids in the commit messages
-(e.g. "G-OC-03 confirmOrder: load by orderId, guard, CONFIRMED, save, emit").
-If a finding needs a new field, event, command or state, stop and hand it to me.
-```
-
-If the agent stops on a model gap, or an open question (Q-\*) needs new structure, go
-back to Step 4. Don't write the structure into the code. Re-run the gap report after
-every implementation session and every regeneration: it shows what is still missing.
-
-### Step 7 — Verify and close ✅
-
-`mvn test` should be green, apart from the known template issues in section 8. Then
-re-run the gap report: the target is **zero blockers and zero majors** for the flow.
-After that come manual and acceptance tests (Karate/HTTP files; in microservices,
-also the end-to-end environment), and the merge.
-
-### Step 8 — When the model changes later ✅ / 🛠
-
-Edit ZFL/ZDL → validate → regenerate → Step 1 → basic test data → gap report →
-refresh scenario test data →
-Step 6 for each affected flow (or for new behavior).
-
----
-
-## 6. Invocation cheat sheet
-
-| I want to… | Claude Code (skills installed) | Any agent |
-|---|---|---|
-| ZFL → ZDL | `/zfl-to-zdl <flow.zfl>` | "Generate the ZDLs from <flow.zfl> with the zfl-to-zdl skill" |
-| Validate a ZDL | `jbang zw -p ZdlToJsonPlugin zdlFile=<f>.zdl > /dev/null` | same |
-| Find what's missing | `/zenwave-gap-report` | "Run zenwave-gap-report with the overlay" |
-| Implement a finding | `/zenwave-fill-gaps G-OC-03` | "Implement G-OC-03 following zenwave-fill-gaps" |
-| (Re)generate test data (basic) | `/zenwave-test-data` | "Regenerate test data with zenwave-test-data" |
-| Generate scenario test data | `/zenwave-test-scenarios` | "Generate scenario fixtures with zenwave-test-scenarios" |
-| Export the DDL only | `bash .claude/skills/zenwave-test-data/scripts/export-ddl.sh` | same |
-| Implement a flow | the Step 6 prompt | the same prompt |
-
----
-
-## 7. Where the skills live, and releasing them
-
-- **Working copy:** your clone of `zenwave-sdd`, where you develop the skills.
-  Projects never reference it by path.
-- **Release:** `github.com/ZenWave360/zenwave-sdd` (proposed). Tag semver releases
-  (`v0.1.0`), keep a `CHANGELOG.md`, and bump each skill's `version:`
-  frontmatter when it changes.
-- **Projects:** install a pinned release (section 4.3) and commit the installed
-  copy.
-
-```
-zenwave-sdd/
-├── skills/                      # source of truth (Agent Skills format)
-├── templates/project-overlay.md
-└── MANUAL.md
-```
-
----
-
-## 8. Known generator issues (check after every generation)
-
-Found on Arcadia with zenwave-sdk 2.7.x Kotlin templates:
-
-| Symptom | Cause | Workaround / fix |
-|---|---|---|
-| Testcontainers can't connect: database `DATABASENAME` doesn't exist | placeholder in `DockerComposeInitializer-jpa.java.hbs` | set the DB name in `DockerComposeInitializer` (reapply after a forced regeneration) |
-| "Named arguments are prohibited for non-Kotlin functions" in the controller test | the template uses Kotlin named arguments on Java OpenAPI DTOs | use fluent setters |
-| Repository `updateTest` fails for entities with `Instant` fields | asserts `assertEquals(Instant.now(), …)` | assert not-null / use a fixed instant |
-| Fixture folders for embedded / non-aggregate types | the test-data template covered all entities | **being fixed in the SDK**; with older versions, delete them |
-| OpenAPI `minLength: 1` on an array's item `$ref` | `X[] minlength(1)` maps to the wrong keyword | should be `minItems` on the array |
-| Unimplemented methods emit **all** `withEvents` alternatives, and never load or save | expected: that's the generated-once TODO body | the gap report lists them; fill-gaps implements them |
-| Mappers pass `null` into non-null Kotlin DTO parameters | unmapped fields (`Unmapped target` warnings) | fix the data lineage in the model, then `@Mapping` |
-
-`data.sql`, the fixtures, `DockerComposeInitializer`, the `*Impl`, the listener /
-consumer adapters and their `*MapStructMapper`s are **generated once**
-(`skipOverwrite`). A normal regeneration keeps your edits, and a forced one (`-f`)
-replaces them.
-
----
-
-## 9. `jbang zw lint`
-
-Implemented in **zenwave-sdk 2.8.0-SNAPSHOT** (`zenwave-sdk-cli` `lint` subcommand), with structured syntax diagnostics in **dsl-kotlin 1.10**. Overlay-shape contradiction and pluggable naming conventions remain out of this first cut.
-
-`ZdlToJsonPlugin` is the parser entry point for generators, but it isn't a linter:
-- file names are missing from syntax errors;
-- one mistake cascades into false errors, and the output ends with a bare `null`;
-- semantic errors exit with code 0;
-- broken `zdl client` references only produce a WARN, which silently skips
-  cross-model checks;
-- some rules aren't checked at all.
-
-So **yes, a lint command is worth it**, especially for agents and CI. It needs a
-reliable exit code and machine-readable output. Suggested contract:
-
-```bash
-jbang zw lint <file-or-dir>... [--format text|json|sarif] [--output <file>] [--root <dir>] [--strict]
-```
-
-**Streams**
-- **stdout** carries only the report: exactly one document per run, in the chosen
-  format. With zero findings it's still a valid document (an empty `diagnostics` /
-  `results` array), so consumers can always parse it.
-- **stderr** carries everything else: logs, progress, jbang dependency resolution,
-  fatal tool errors. The lint code never writes anything but the report to
-  `System.out`.
-- **`--output <file>`** writes the report as UTF-8 to a file instead of stdout.
-  It's needed on Windows PowerShell 5.1, whose `>` writes UTF-16, and it fits CI
-  upload steps such as GitHub's `upload-sarif`.
-
-**Exit codes** (the same for every format)
-
-| Code | Meaning |
-|---|---|
-| `0` | no failing findings |
-| `1` | findings at error level, or warnings with `--strict` |
-| `2` | the tool itself failed: bad arguments, unreadable file, internal error |
-
-So CI can tell "the model is wrong" (1) apart from "lint broke" (2).
-
-**Text** (default, for humans): `<file>:<line>:<col>: <severity> <ruleId> <message>`,
-one per line, colored only when stdout is a terminal.
-
-**JSON**: a versioned envelope, not a bare array, so fields can be added later.
-
-```json
-{
-  "schemaVersion": "1",
-  "tool": { "name": "zenwave-lint", "version": "2.8.0" },
-  "summary": { "files": 6, "errors": 1, "warnings": 2 },
-  "diagnostics": [
-    {
-      "file": "fulfillment-shipping-domain-model.zdl",
-      "line": 28, "column": 16, "endLine": 28, "endColumn": 21,
-      "severity": "error",
-      "ruleId": "zdl.unknown-type",
-      "message": "Strin is not a valid type",
-      "modelPath": "entities.Fulfillment.fields.customerId.type"
-    }
-  ]
-}
-```
-
-- `file`: relative to the working directory (or `--root`), with forward slashes.
-- `line`, `column`, `endLine`, `endColumn`: **1-based**. `end*` are optional.
-- `severity`: `error | warning | note`, the same levels as SARIF.
-- `ruleId`: stable and namespaced (`zdl.syntax`, `zdl.unknown-type`,
-  `zdl.unknown-event`, `zdl.unresolved-api`, `zdl.transition-state`,
-  `zdl.data-lineage`…). Rule ids are never renamed; retired ones are left unused.
-- `modelPath`: the model location (as in today's `ZDL ERROR [entities.…]`), so
-  agents can find the element without parsing positions. Optional for syntax errors.
-- Order: deterministic, by file, line, column, then rule id, so runs diff cleanly.
-
-**SARIF 2.1.0**
-- `$schema` and `version: "2.1.0"`, with one `run`.
-- `tool.driver`: `name`, `version`, `informationUri`, and `rules[]`, each with
-  `id`, `shortDescription`, `helpUri` and `defaultConfiguration.level`.
-- Each result has `ruleId`, `ruleIndex`, `level` and `message.text`. Its location is
-  `physicalLocation.artifactLocation` with a relative `uri` and `uriBaseId: "%SRCROOT%"`
-  (declared in `run.originalUriBaseIds`), plus `region` with 1-based `startLine` /
-  `startColumn` (and optional end positions).
-- `partialFingerprints`: e.g. a hash of `ruleId` + `modelPath`. Code scanning uses
-  them to track the same finding across commits when line numbers shift.
-- Tool failures go in `invocations[0]` (`executionSuccessful: false` plus
-  `toolExecutionNotifications`), with exit code 2.
-
-**Positions:** normalize every source to 1-based. ANTLR's `charPositionInLine`
-(today's `line 29:11`) is 0-based. Check the base of the semantic validator's
-`char:` too. Otherwise IDE and code-scanning annotations land one character off.
-
-| Rule | Level |
-|---|---|
-| syntax (stop at the first error per file, no cascade) | error |
-| unknown types / events / inputs / outputs | error |
-| `zdl client` / `asyncapi client` not resolvable | error |
-| `@listener(zdl:, event:)` event missing in the referenced model; `@calls` target command missing | error |
-| `@transition` state missing in the `@lifecycle` enum; `@lifecycle(initial:)` missing | error |
-| `@asyncapi` and `@listener` mixed for the same event; style contradicts the overlay shape | warning |
-| data lineage: a required input field of an event-triggered command is missing from the triggering event | warning |
-| naming conventions (channel/topic/id formats) | warning (pluggable) |
-
-It could reuse the diagnostics that `zenwave-lsp` already computes, so the CLI, the
-IDE and agents report the same errors.
-
----
-
-## 10. Build checklist (in order)
-
-| # | Item | Why | Status |
+| Discovery and first models (new project) | `zenwave-grill-domain` | `GLOSSARY.md`, `docs/adr/`, `docs/domain.md`, then one `*.zfl` per flow and one `*.zdl` per bounded context | you, answering rounds of questions; you review the draft |
+| A new flow (existing project) | `zenwave-extend-models` | the impact list, a new `*.zfl`, additive changes to the existing `*.zdl` | you, on the impact list before it writes |
+| Challenge | `zenwave-grill-models` | model changes, ADRs, glossary entries | you |
+| Projections | ZenWave IDE plugin | diagrams, state machines, contracts | you, by looking |
+| Generate | ZenWave SDK (`zenwave-scripts.zw`) | structure, APIs, test skeletons | deterministic |
+| Test data | `zenwave-test-data`, `zenwave-test-scenarios` | `data.sql`, JSON aggregates, scenario matrix | you approve the matrices |
+| Board | `zenwave-tasks-from-code-and-models` (code exists) / `zenwave-tasks-from-models` (none yet) | `docs/tasks.md` | you approve the slices |
+| Gate | `zenwave-gate-check` | the checklist, then your tag | you |
+
+It is not linear. Generating code shows a missing field; the test data shows a precondition no state can express;
+the board shows a branch with no end. Each sends you back to the models, and the cheapest moment to find it is now.
+
+### Grilling
+
+Both grilling skills follow Matt Pocock's [`grilling`](https://github.com/mattpocock/skills) skill, copied verbatim
+(MIT) in `templates/grilling/`, plus a ZenWave layer, [templates/grilling.md](templates/grilling.md), that replaces
+his `domain-modeling` with the glossary and ADR formats and the ZenWave languages. Nothing of his has to be
+installed. The open decisions form a tree;
+each round asks the whole frontier (the decisions whose prerequisites are settled), numbered, each with a
+recommended answer, worded so that "yes" accepts it. The agent looks up facts itself, and writes the glossary and
+the ADRs as decisions settle, not at the end. The ZenWave version walks a design tree specific to flows: actors and
+scope, `end` outcomes, policies and branches, bounded contexts, `call` or event, compensations, timers, lifecycles,
+correlation and lineage, rules, concurrency, personal data.
+
+### The gate
+
+Five conditions, as in the article [Two loops](https://ivangsa.com/articles/sdd-two-loops-model-driven-human-in-the-loop/):
+the models are valid (lint, no LLM involved), reviewed by you and by the agents, covered by test data for every
+branch, broken into an approved board, and committed and tagged. `zenwave-gate-check` checks what is mechanical and
+asks you for the rest. The tag `baseline/<flow>-<n>` goes on the implementation repository and on each repository
+that holds models, so "what was approved" is one name everywhere.
+
+## 3. The AFK loop
+
+### Roles
+
+| Role | Who | Does | Never |
 |---|---|---|---|
-| 1 | **Validate the skills on a replay.** Check out Arcadia at `zenwave-generated-v1` in a worktree, run `zenwave-gap-report`, compare it with the committed report, run `zenwave-fill-gaps` on a few findings, and `zenwave-test-data` end to end | the skills haven't run as skills | 🛠 |
-| 2 | Pilot on a **microservice** (Kafka + AsyncAPI) project | the skills were derived from a modulith | 🛠 |
-| 3 | Release `v0.1.0`: `version:` frontmatter, CHANGELOG, tag | installable by others | 🛠 |
-| 4 | `jbang zw lint` (section 9): rules, stdout-only reports (text / JSON / SARIF 2.1.0), exit codes 0/1/2 | reliable model validation for agents and CI | ✅ 2.8.0-SNAPSHOT (overlay-shape and naming conventions still open) |
-| 5 | SDK template fixes (section 8); embedded fixture folders are in progress | fewer gaps to find | 🛠 |
-| 6 | Archetypes on Maven Central | section 4.1 without a local build | 🛠 |
+| You | the person | answer proposals, test the running application, change priorities and routing, merge | read every diff as it lands |
+| Orchestrator | a Claude Code session with the `orchestrator` agent | plans from the board, hands tasks out, checks what comes back, merges, sends slices to review, writes the board, talks to you | write product code, edit the baseline, merge into your branch, sign |
+| Worker | a Claude subagent, Codex or Grok, in a clone, fresh context per task | one task, test first, focused tests, a report | commit, push, edit the baseline |
+| Reviewer | a worker that implemented none of the slice, a strong model | one slice, full suite, model axis and standards axis | edit anything but its report |
 
----
+### The orchestrator is the scheduler
 
-## 11. Arcadia as the worked example (modulith)
+An earlier version of this repository ran the loop in a bash engine (`archive/zw-afk-engine`). It was a lot of code to
+do what Claude Code already does: start agents in the background, be told when they finish, and decide what goes next.
+The method that worked on ZenWave's own repositories, and the one used here, is an orchestrator session that:
 
-| Stage | Result |
-|---|---|
-| First gap report | 12 model gaps, 34 code gaps, 8 cross-cutting, 15 open questions. 8/11 listener mappings would crash on the first event |
-| Model passes 1–2 | customer data snapshot at checkout, multi-line orders with one reservation per line, a `ReserveStockResult` wrapper, same-module `@listener`s, `releaseStock from [RESERVED, CONFIRMED]`, ZFL identity fixes |
-| Test data | 7 scenario chains, 35 rows; `data.sql` and JSON identical |
-| Implementation | done directly from the report (not yet through fill-gaps) |
+- reads the plan (the board) and decides what can go in parallel;
+- hands each task to a worker in its **own clone**, so no two jobs ever share a checkout;
+- does not trust a process that ended: it looks for the report on disk and the commits in the clone;
+- reads the report and the diff, repeats the tests itself, and only then merges;
+- keeps the board and a short log current after every task, because that is what survives a restart or a compaction.
 
-Files: `arcadia-editions-modulith-service-kotlin/docs/zenwave-gap-report.md`,
-`arcadia-editions-modulith-service-java/docs/zenwave-sdd-overlay.md` (models in
-sibling repos and a `service-all` jar).
+Its costs are known and accepted: it spends tokens reading reports, it cannot restart itself if it runs out of its own
+usage limit, and a person has to bring it back; and when its conversation is compacted it relies on the board, the log
+and the clones to recover what it knew.
+
+### What runs in parallel
+
+Tasks run at the same time when they touch different bounded contexts (the files in their `model:` fields), they do not
+depend on each other, and they are under the limits of `.zenwave/routing.md`. Inside one flow that is often the early
+slices: the calls that a command makes into three other contexts, the listeners of notifications and analytics.
+Slices that extend the same command (the alternative outcomes of `bookSlot`, say) go one after another: they edit the
+same method and would only produce merge conflicts. A task that depends on another starts after the other is merged, so
+its clone already includes it. Codex runs one job at a time.
+
+### Clones and merging
+
+```
+person's checkout ── .zenwave/work/integration   branch afk/<flow>, the baseline tag plus every merged task
+                  ├─ .zenwave/work/T-02          clone, branch task/T-02, push disabled   (worker A)
+                  ├─ .zenwave/work/T-03          clone, branch task/T-03, push disabled   (worker B)
+                  └─ .zenwave/work/review-S1     throwaway clone at the slice's last commit (reviewer)
+```
+
+A worker can never push: its clone's push URL is `DISABLED`, which also makes it safe to run Grok with
+`--always-approve`. The orchestrator commits what a worker brings (unsigned, with trailers), fetches the branch into
+`integration` and merges it with `--no-ff`. Clones are deleted after the merge. Your own checkout is never touched.
+
+### Routing
+
+[`.zenwave/routing.md`](templates/routing.md) says who takes each kind of work, in order: a first choice and the
+fallbacks for when it is out of quota or has failed twice. It also holds the commands that start Codex and Grok, the
+limits (tasks at once, one Codex job), and the files no worker may change. The orchestrator reads it whenever it hands
+work out, so you can change it in the middle of a flow, by editing the file or by telling the orchestrator.
+
+Reviews go to a worker that implemented none of the slice when there is one. A review runs on a snapshot of the slice,
+so the next slice can be implemented while it runs.
+
+### Usage limits
+
+Each CLI says it is out of quota in its own words (`You've hit your 5-hour limit · resets 6:30pm`, `usage limit … try
+again at 9:39 AM`). A headless CLI does not wait: it prints the message and exits. The orchestrator notes the worker
+and the reset in `.zenwave/handoff/<flow>/quota.md`, routes to the next worker from then on, and starts the
+interrupted task again in the same clone with a handoff prompt (the original task, `git status`, the diff so far, the
+last message of the previous worker). If every worker of a row is out, it tells you and schedules one wakeup at the
+earliest reset.
+
+### Git and signing
+
+AFK commits go to `afk/<flow>` in the `integration` worktree, with `commit.gpgsign=false` there only. They carry the
+trailers:
+
+```
+feat(place-order-flow): T-07 authorizePayment: emit exactly one outcome
+
+AI-Agent: codex
+AI-Model: gpt-6.1-sol
+AI-Orchestrator: claude-code
+```
+
+You sign once per loop, when you have reviewed the result: `git merge --no-ff -S afk/<flow>`. Your GPG agent cache can
+stay short. If your branch protection requires every commit to be signed, give the agents their own signing key (an
+SSH or GPG subkey without passphrase, a distinct identity, revocable) instead.
+
+### Exit
+
+Every task `[x]` or `[!]`, every slice reviewed `[x]`, the full suite green, no open proposal; and the check mode of
+the tasks skill finds nothing missing between the models and the code. The orchestrator archives the board to
+`docs/tasks/<flow>-<baseline>.md` and reports. Blocked tasks or open proposals mean it is not done: they wait for you.
+
+## 4. Tests: two levels
+
+| Level | When | Data | Runs |
+|---|---|---|---|
+| Focused unit tests | each task | JSON aggregates (`src/test/resources/data/<persistence>/<Entity>/<n>.json`) loaded into in-memory repositories | the task's `tests:` only |
+| Full suite | each slice review | `data.sql` loaded into Testcontainers | everything, once |
+
+Build times grow with the project: running integration tests per task would leave the agents waiting most of the time.
+
+## 5. Deployment shapes
+
+Choose before writing ZDL; record it in the overlay.
+
+| | Microservices (Kafka + AsyncAPI) | Modulith |
+|---|---|---|
+| Repositories | one per bounded context (plus its contracts) | one, a module per bounded context |
+| ZDL consumer | `@asyncapi(api: XApi, channel: "...")` | `@listener(zdl: XZdl, event: ...)`, `@listener(event: ...)` |
+| Inbound event code | `*ConsumerService` adapters over AsyncAPI consumer interfaces | `*EventsListener` with `@ApplicationModuleListener` |
+| Synchronous calls | HTTP client behind a port | the other module's service interface |
+| Archetype | `-Dkafka=true` | `-Dmodulith=true` |
+| Unit of work | this repository's slice of each flow | the whole flow |
+| Flow tests | consume and produce with a broker in Testcontainers; end to end in an environment | Spring Modulith `Scenario`, one JVM |
+
+## 6. Known generator issues
+
+Found with zenwave-sdk 2.7.x Kotlin templates. Check after every generation.
+
+| Symptom | Cause | Workaround |
+|---|---|---|
+| Testcontainers cannot connect: database `DATABASENAME` doesn't exist | placeholder in `DockerComposeInitializer` | set the name (again after a forced regeneration) |
+| "Named arguments are prohibited for non-Kotlin functions" in controller tests | Kotlin named arguments on Java OpenAPI DTOs | fluent setters |
+| Repository `updateTest` fails on `Instant` fields | asserts `Instant.now()` equality | assert not null, or a fixed instant |
+| OpenAPI `minLength: 1` on an array item | `X[] minlength(1)` maps to the wrong keyword | should be `minItems` |
+| Unimplemented methods emit every `withEvents` alternative, never load or save | the generated-once body, by design | the board's tasks |
+| Mappers pass `null` into non-null Kotlin parameters | unmapped fields | fix the lineage in the model, then `@Mapping` |
+
+`data.sql`, the fixtures, `DockerComposeInitializer`, the `*Impl` classes, listeners and their mappers are generated
+once: a normal regeneration keeps your edits; a forced one (`-f`) replaces them.
+
+## 7. Linting the models
+
+`jbang zw lint` (zenwave-sdk 2.8.0+) checks syntax, unknown types and events, unresolved clients, listener and call
+targets, lifecycle states, and with `--strict` data lineage and mixed bindings. Exit 0 clean, 1 findings, 2 the tool
+failed. The skills call it through `.zenwave/bin/lint-zdl.sh` (installed by `install.sh`), which writes
+`target/zdl-lint/<name>.json`; how to read the report is in `templates/zenwave-languages/lint.md`.
+
+### The modeling rules
+
+How a flow becomes ZDL (one model per bounded context, commands, events, `@calls`, multi-response results, lifecycles,
+and `@asyncapi` or `@listener` by deployment shape) lives in `templates/zenwave-languages/modeling-rules.md`, with the
+id and topic conventions next to it. It came from the first skill of this repository, `zfl-to-zdl`, a scaffold generator
+that `zenwave-grill-domain` and `zenwave-extend-models` replaced: they write models from decisions, not from a ZFL
+alone.
+
+## 8. Developing zenwave-sdd
+
+- Shared formats live in `templates/` and are copied into each skill's `references/` (skills are installed one by
+  one): `scripts/sync-references.sh` after editing them, `--check` in CI.
+- `scripts/update-references.sh` refreshes the third-party and ZenWave material by copying the latest versions:
+  Matt Pocock's `grilling` (from GitHub), the ZFL and ZDL docs pages (`ZenWave360.github.io`), the grammars
+  (`dsl-kotlin`) and the Arcadia Editions examples (one flow; orders and payments in both shapes). Then it syncs them
+  into the skills. Review `git diff` before committing.
+- `bin/lint-zdl.sh` and `bin/check-board.sh` are installed into projects as `.zenwave/bin/`. The board checker
+  validates the format and the graph of a board; try it on any `docs/tasks.md`.
+- The bash engine of earlier versions is at the tag `archive/zw-afk-engine`.
+
+## Credits
+
+Grilling is Matt Pocock's skill (MIT), with a ZenWave layer; vertical slices, tracer bullets, the smart zone and the day/night
+shift framing come from his workshop and from Dex Horthy (HumanLayer); the Ralph loop is Geoffrey Huntley's, and the practice of an orchestrator handing tasks to workers in clones comes
+from how ZenWave's own repositories were built.

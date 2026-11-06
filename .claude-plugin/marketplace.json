@@ -3,9 +3,9 @@
   "owner": { "name": "ZenWave360" },
   "plugins": [
     {
-      "name": "zenwave-orchestration",
-      "source": "./orchestration",
-      "description": "Run a multi-repository backlog with an orchestrator, implementers and reviewers across Claude Code, Codex and Grok."
+      "name": "zenwave-sdd",
+      "source": "./",
+      "description": "Model-driven development with ZenWave in two loops per business flow: a human-in-the-loop for the models, test data and board, and an away-from-keyboard loop of agents that implement and review it."
     }
   ]
 }

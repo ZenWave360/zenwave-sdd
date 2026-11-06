@@ -1,0 +1,637 @@
+---
+title: "ZFL Flow Language"
+slug: "/docs/event-driven-design/zenwave-flow-language/"
+---
+
+import Quote from '../../../components/Quote.astro';
+import QuoteAuthor from '../../../components/QuoteAuthor.astro';
+
+# ZenWave Flow Language (ZFL)
+
+A domain specific language (DSL) for modeling business flows discovered with Event Storming.
+
+<Quote>
+    ZFL gives Event Storming findings a structured home: readable by humans, parseable by tools, and stable enough to version, review, search, and generate from.
+    <QuoteAuthor>- ZenWave 360</QuoteAuthor>
+</Quote>
+
+## Guide: How and Why to Use ZFL
+
+### What is ZenWave Flow Language
+
+ZFL is a language for describing the flow of business events, commands, policies, systems, and outcomes across one or more Bounded Contexts.
+
+Where ZDL describes the inside of a Bounded Context, ZFL describes the flow that crosses boundaries. It is the textual counterpart of an Event Storming board.
+
+ZFL is designed to be compact, readable, and precise enough for tooling. It works well when you want to keep the business story visible while also giving generators, agents, and architecture tools a machine-readable model.
+
+For a narrative walkthrough of translating an Event Storming board into ZFL, see [From Event Storming to ZFL](https://ivangsa.com/articles/arcadia/004-from-event-storming-to-zfl/).
+
+### What Problems ZFL Solves
+
+- Capturing Event Storming findings in a format that can be versioned and reviewed
+- Making policies explicit with `when ... do ...` blocks
+- Keeping happy paths, failure paths, retries, compensations, and timeouts visible
+- Connecting flow steps to the systems and services that own them
+- Providing enough structure for downstream generation of ZDL models, AsyncAPI definitions, tests, documentation, and architecture views
+
+### How ZFL Fits into a Real Project
+
+- Event Storming discovers the flow as events, commands, policies, actors, and time-based rules
+- ZFL turns that discovery into a durable flow model
+- Systems and services in ZFL connect the flow to Bounded Contexts and ZDL files
+- ZDL then describes each Bounded Context in detail
+- ZenWave SDK and AI agents can use both models to generate consistent implementation artifacts
+
+ZFL and ZDL are complementary:
+
+| Language | Main Question | Typical Scope |
+|---|---|---|
+| ZFL | What happens across the business flow? | Cross-context process, policies, events, commands, systems |
+| ZDL | What is inside this Bounded Context? | Aggregates, entities, services, commands, events, APIs |
+
+### Minimal Complete ZFL Example
+
+This example captures a very small checkout flow: a customer starts checkout, the system authorizes payment, and the flow ends either completed or cancelled.
+
+```zfl
+flow CheckoutFlow {
+
+    @actor(Customer)
+    start StartCheckout {
+        orderId String
+    }
+
+    when StartCheckout do authorizePayment {
+        service Payments.PaymentService
+        emits PaymentAuthorized
+        emits PaymentDeclined
+    }
+
+    when PaymentDeclined do cancelOrder {
+        service Orders.OrderService
+        emits OrderCancelled
+    }
+
+    end {
+        completed: PaymentAuthorized
+        cancelled: OrderCancelled
+    }
+}
+```
+
+## Building a Flow Incrementally with ZFL
+
+### Starts and Actors
+
+A `start` block describes something that opens the flow. It can be initiated by a user, an external system, a scheduler, or any other actor.
+
+```zfl
+@actor(Customer)
+start StartOrderCheckout {
+    items SKU[]
+}
+```
+
+`@actor(Customer)` tells readers who starts the flow. The body describes the data that enters the flow.
+
+### Policies
+
+Policies are the main building block of ZFL. They translate the Event Storming pattern "when this happens, do that".
+
+```zfl
+when OrderCreated do authorizePayment {
+    service PaymentsProcessing.PaymentsProcessingService
+    emits PaymentAuthorized
+    emits PaymentDeclined
+    emits PaymentFailed
+}
+```
+
+The left side is the trigger. The right side is the command. The body lists the service responsible for the work and the possible outcomes.
+
+### Branches
+
+Business flows rarely have only one outcome. ZFL keeps branches explicit by naming each event that a command can emit.
+
+```zfl
+when PaymentFailed do retryPayment {
+    service PaymentsProcessing.PaymentsProcessingService
+    emits PaymentRetried
+    emits PaymentRetryExhausted
+}
+
+when PaymentDeclined, PaymentRetryExhausted do releaseStock {
+    service CatalogProducts.CatalogProductsService
+    emits StockReleased
+}
+```
+
+Multiple triggers can be separated by commas, pipes, or `and` depending on the relationship you want to express.
+
+### Outcome Grouping
+
+When you want to make emission branches explicit, use `@outcome` to group related `emits` statements.
+
+```zfl
+when OrderCreated do authorizePayment {
+    service PaymentsProcessing.PaymentsProcessingService
+
+    @outcome("authorized")
+    emits PaymentAuthorized, OrderUpdated
+
+    @outcome("declined")
+    emits PaymentDeclined
+
+    @outcome("failed")
+    emits PaymentFailed
+}
+```
+
+- Events on the same `emits` line are emitted together.
+- Different `@outcome` values in the same block represent alternative branches.
+- Without `@outcome`, rendering stays as it is today: one edge per `emits`.
+
+This keeps AND and OR semantics visible in diagrams and generated views without changing the underlying event model.
+
+### Direct Calls and Responses
+
+Most flow steps are modeled as event-to-command policies. Sometimes a command needs an immediate response from another command. ZFL uses `call` for that.
+
+```zfl
+when StartOrderCheckout do startOrderCheckout {
+    service OrdersCheckout.OrdersCheckoutService
+    call reserveStock
+    on StockReserved emits OrderCreated
+    on StockUnavailable emits StockUnavailable
+}
+
+do reserveStock {
+    service CatalogProducts.CatalogProductsService
+    emits response StockReserved
+    response StockUnavailable
+}
+```
+
+Use `call` when the caller waits for an answer. Use `response` for outcomes returned directly to the caller. Use `emits response` when the same outcome is both returned synchronously and published as an event.
+
+### Early Exits with `on`
+
+An `on` line handles one response of the `call` just before it. When the `on` answers with `response`, `emits` or `emits response`, it is an exit: the command ends there and the steps after it do not run on that path. A response that no `on` handles is the happy path, and the command goes on to the next line.
+
+```zfl
+when RequestBooking, RequestAssistedBooking do bookSlot {
+    service Bookings.BookingService
+
+    call getBookingTerms
+    on SlotNotBookable response SlotNotBookable
+
+    call checkBookingHolder
+    on HolderNotEligible, HolderBlocked response BookingRejected
+
+    @outcome(confirmed)
+    emits response BookingConfirmed
+}
+
+do getBookingTerms {
+    service Facilities.FacilityCatalogService
+    response BookingTermsResult
+    response SlotNotBookable
+}
+
+do checkBookingHolder {
+    service Accounts.AccountService
+    response HolderEligibleResult
+    response HolderNotEligible
+    response HolderBlocked
+}
+```
+
+Read it as plain language: "call `getBookingTerms`; if the slot cannot be booked, answer `SlotNotBookable`". When `getBookingTerms` answers `SlotNotBookable`, the command answers `SlotNotBookable` and `checkBookingHolder` does not run. When it answers `BookingTermsResult`, which no `on` handles, the command goes on to `checkBookingHolder`.
+
+`on <Event> call <commandName>` is different: it chains. The `on` lines after it handle the responses of that second call, not of the first one.
+
+**Several events in one `on`.** Separate the events with commas when they lead to the same exit, as in `on HolderNotEligible, HolderBlocked response BookingRejected`. Annotations placed before `on` apply to it, for example `@outcome("holder-rejected")` to name an early exit.
+
+**Checks in the editor.**
+
+- It is an error when an event in an `on` is not a declared response of the `call` before it. For example, writing `on SlotNotBookable` after `call checkBookingHolder` gives `Action 'bookSlot' handles event 'SlotNotBookable' that is not a declared response of action 'checkBookingHolder'.`
+- It is a warning when the `on` lines cover every response the call declares and more lines follow them, because those lines cannot run: `Action 'bookSlot' handles every response from action 'getBookingTerms', so subsequent lines are unreachable.`
+
+**Diagrams.** The flowchart and the sequence diagrams draw an `on` that answers as an exit of the command, not as one more step.
+
+### Async Calls for Asynchronous Commands
+
+When the caller should not wait for an inline response, use `async call`.
+
+```zfl
+when OrderCreated do authorizePayment {
+    service PaymentsProcessing.PaymentsProcessingService
+    async call authorizePayment
+}
+
+when PaymentAuthorized do confirmOrder { ... }
+when PaymentDeclined do releaseStock { ... }
+when PaymentFailed do retryPayment { ... }
+```
+
+`async call` sends the command to another service and ends the step. The continuation happens later in separate `when` blocks reacting to the response events.
+
+This also changes message ownership:
+
+| Statement | Ownership | Response |
+|---|---|---|
+| `emits` | this service publishes the message | none |
+| `call` | this service invokes and waits | inline, same transaction |
+| `async call` | the target service owns the command channel | separate `when` block |
+
+### Time-Based Policies
+
+Timers and deadlines are part of the business flow. ZFL models them with annotations on `start` blocks.
+
+```zfl
+@actor(Scheduler)
+@time("10 minutes after OrderCreated and not PaymentAuthorized or PaymentDeclined or PaymentRetryExhausted")
+start ReservationExpired {
+    orderId String
+}
+
+when ReservationExpired do releaseStock {
+    service CatalogProducts.CatalogProductsService
+    emits StockReleased
+}
+```
+
+The timer becomes a named trigger that can participate in the rest of the flow like any other event.
+
+### Compensations
+
+Compensating actions can be documented with annotations. The syntax is intentionally lightweight, so teams can keep the business reason visible without forcing an implementation strategy too early.
+
+```zfl
+@compensates(reserveStock)
+when PaymentDeclined, PaymentRetryExhausted, ReservationExpired do releaseStock {
+    service CatalogProducts.CatalogProductsService
+    emits StockReleased
+}
+```
+
+### End States
+
+Every flow should make its terminal outcomes explicit.
+
+```zfl
+end {
+    completed: PaymentCaptured
+    stockGone: StockUnavailableNotificationSent
+    orderCancelled: OrderCancelledNotificationSent
+}
+```
+
+Each key is a business-friendly outcome name. Each value is an event that marks that outcome.
+
+## Systems
+
+The optional `systems` block connects the flow to the systems and services that own the work.
+
+```zfl
+systems {
+    @zdl("orders-checkout-api/domain-model.zdl")
+    OrdersCheckout {
+        service OrdersCheckoutService
+    }
+
+    @zdl("payments-processing-api/domain-model.zdl")
+    PaymentsProcessing {
+        service PaymentsProcessingService
+    }
+}
+```
+
+You can start without systems while the Event Storming model is still fluid. Add them later when Bounded Contexts and ownership become clear.
+
+Service references inside flow steps use the same names:
+
+```zfl
+when OrderCreated do authorizePayment {
+    service PaymentsProcessing.PaymentsProcessingService
+    emits PaymentAuthorized
+}
+```
+
+## Complete Example
+
+This is a shortened version of the Arcadia Editions `PlaceOrderFlow`.
+
+```zfl
+systems {
+    @zdl("catalog-products-api/domain-model.zdl")
+    CatalogProducts {
+        service CatalogProductsService for (Product)
+    }
+
+    @zdl("orders-checkout-api/domain-model.zdl")
+    OrdersCheckout {
+        service OrdersCheckoutService
+    }
+
+    @zdl("payments-processing-api/domain-model.zdl")
+    PaymentsProcessing {
+        service PaymentsProcessingService
+    }
+}
+
+flow PlaceOrderFlow {
+
+    @actor(Customer)
+    start StartOrderCheckout {
+        items SKU[]
+    }
+
+    when StartOrderCheckout do startOrderCheckout {
+        service OrdersCheckout.OrdersCheckoutService
+        call reserveStock
+        on StockReserved emits OrderCreated
+        on StockUnavailable emits StockUnavailable
+    }
+
+    do reserveStock {
+        service CatalogProducts.CatalogProductsService
+        emits response StockReserved
+        response StockUnavailable
+    }
+
+    when OrderCreated do authorizePayment {
+        service PaymentsProcessing.PaymentsProcessingService
+        emits PaymentAuthorized
+        emits PaymentDeclined
+        emits PaymentFailed
+    }
+
+    @actor(Scheduler)
+    @time("10 minutes after OrderCreated and not PaymentAuthorized or PaymentDeclined or PaymentRetryExhausted")
+    start ReservationExpired {
+        orderId String
+    }
+
+    end {
+        completed: PaymentCaptured
+        stockGone: StockUnavailable
+        orderCancelled: OrderCancelled
+    }
+}
+```
+
+## Grammar & Reference
+
+The sections below describe the ZFL language in detail. They are intended as a reference for syntax and structure, not as a step-by-step guide.
+
+## File Structure
+
+ZFL files follow a structured format:
+
+### File Types and Extensions
+
+- **`.zfl` files** - Flow model files that describe business flows, systems, policies, commands, events, and terminal outcomes
+
+### 1. Imports Section (Optional)
+
+Imports can be declared at the top of the file.
+
+```zfl
+@import("shared-types.zfl")
+@import(name: "shared-types.zfl")
+```
+
+### 2. Configuration Section (Optional)
+
+The `config` block can contain options for tooling.
+
+```zfl
+config {
+    namespace "arcadia"
+}
+```
+
+### 3. Systems Section (Optional)
+
+The `systems` block describes participating systems and their services.
+
+```zfl
+systems {
+    OrdersCheckout {
+        service OrdersCheckoutService
+    }
+}
+```
+
+### 4. Flow Definitions
+
+A file can contain one or more `flow` blocks.
+
+```zfl
+flow PlaceOrderFlow {
+    start StartOrderCheckout {
+        items SKU[]
+    }
+
+    when StartOrderCheckout do startOrderCheckout {
+        emits OrderCreated
+    }
+
+    end {
+        completed: OrderCreated
+    }
+}
+```
+
+### Syntax Pattern
+
+```text
+[<import>*]
+[<config>]
+[<systems>]
+[<flow>*]
+```
+
+## Annotations
+
+Annotations decorate systems, services, starts, policies, commands, fields, and flow elements.
+
+```zfl
+@actor(Customer)
+@time("10 minutes after OrderCreated")
+@compensates(reserveStock)
+```
+
+Annotation values can be simple values, arrays, objects, or key-value pairs depending on the annotation.
+
+## Comments
+
+ZFL supports standard comment styles:
+
+- `// line comment`
+- `/* block comment */`
+- `/** documentation comment */`
+
+Documentation comments are useful for preserving business context directly in the model.
+
+```zfl
+/**
+ * Payment is captured only when the order is ready to ship.
+ */
+when FulfillmentScheduled do capturePayment {
+    emits PaymentCaptured
+}
+```
+
+## Fields
+
+`start` blocks can declare fields using a compact name-type syntax.
+
+```zfl
+start StartOrderCheckout {
+    orderId String
+    items SKU[]
+    couponCode String?
+}
+```
+
+Field types can be custom identifiers. Arrays use `[]`. Optional fields use `?`.
+
+Available validations:
+
+- `required`, `unique`
+- `min`, `max`
+- `minlength`, `maxlength`
+- `email`
+- `pattern`
+
+## Flows
+
+A flow groups starts, policies, command definitions, and end states.
+
+```zfl
+flow <FlowName> {
+    [<start> | <when> | <do> | <end>]*
+}
+```
+
+## Starts
+
+Starts are triggers that open or inject work into a flow.
+
+```zfl
+[<javadoc>]
+[<annotation>*]
+start <StartName> {
+    [<field>*]
+}
+```
+
+## When Blocks
+
+When blocks model event-to-command policies.
+
+```zfl
+[<javadoc>]
+[<annotation>*]
+when <Trigger> do <commandName> {
+    [service <SystemName>.<ServiceName>]
+    [call <commandName>]
+    [async call <commandName>]
+    [on <EventName>[, <EventName>]* call <commandName>]
+    [on <EventName>[, <EventName>]* response <EventName>]
+    [on <EventName>[, <EventName>]* emits <EventName>]
+    [emits <EventName>]
+    [emits response <EventName>]
+    [response <EventName>]
+}
+```
+
+Triggers can be grouped:
+
+```zfl
+when PaymentDeclined, PaymentRetryExhausted do releaseStock {
+    emits StockReleased
+}
+
+when InventoryReserved and PaymentAuthorized do confirmOrder {
+    emits OrderConfirmed
+}
+```
+
+## Do Blocks
+
+Do blocks define commands that can be called directly or documented independently.
+
+```zfl
+do reserveStock {
+    service CatalogProducts.CatalogProductsService
+    emits response StockReserved
+    response StockUnavailable
+}
+```
+
+## Service References
+
+Service references connect a flow command to the service that owns it.
+
+```zfl
+service OrdersCheckout.OrdersCheckoutService
+```
+
+Inside a `systems` block, services can optionally declare the aggregates they work with.
+
+```zfl
+service CatalogProductsService for (Product, StockReservation)
+```
+
+## End Blocks
+
+End blocks name the terminal outcomes of a flow.
+
+```zfl
+end {
+    <outcomeName>: <EventName>[, <EventName>]*
+}
+```
+
+Example:
+
+```zfl
+end {
+    completed: PaymentCaptured
+    cancelled: OrderCancelled
+}
+```
+
+## Modeling Guidelines
+
+- Use past-tense names for events: `OrderCreated`, `PaymentCaptured`
+- Use imperative command names: `authorizePayment`, `releaseStock`
+- Start with the flow before assigning systems if ownership is not clear yet
+- Add `systems` and `service` references when Bounded Contexts are discovered
+- Keep failure paths explicit instead of hiding them in prose
+- Use `call` only when the caller needs an immediate response
+- Use `end` to make the terminal business outcomes visible
+
+## ZFL to ZDL
+
+ZFL is often the input for creating ZDL models.
+
+The mapping is not purely mechanical, but the structure gives strong guidance:
+
+- Each system can become a Bounded Context or service repository
+- Each service reference identifies the command surface owned by that system
+- Each emitted event can become a ZDL `event`
+- Each `start` or command payload can become a ZDL `input`
+- Flow sequencing can suggest aggregate lifecycle transitions
+
+ZFL tells the story of the whole flow. ZDL describes each part in detail.
+
+## Grammar Source
+
+For code generators, programming agents, and tools that need the exact language syntax, the canonical grammar source is available in the ZenWave DSL repository:
+
+- [ZFL ANTLR grammar](https://github.com/ZenWave360/dsl-kotlin/blob/main/src/commonMain/antlr/io.zenwave360.language.antlr/Zfl.g4)

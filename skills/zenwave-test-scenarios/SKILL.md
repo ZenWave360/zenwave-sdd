@@ -1,6 +1,6 @@
 ---
 name: zenwave-test-scenarios
-description: Generate the scenario test data of a ZenWave-generated Spring Boot + JPA backend - src/test/resources/data.sql and data/jpa/<Entity>/<n>.json with a fixture for every state a command starts from, every alternative and failure branch of the ZFL flows, every flow outcome and every status a client reads - as consistent cross-context chains, with a coverage matrix and the assumptions written down. Builds on zenwave-test-data (same DDL export, file formats and validation). Use before implementing or testing behavior, after a zenwave-gap-report, or when the fixtures hold only one example per entity.
+description: Generate the scenario test data of a ZenWave-generated Spring Boot + JPA backend - src/test/resources/data.sql and data/jpa/<Entity>/<n>.json with a fixture for every state a command starts from, every alternative and failure branch of the ZFL flows, every flow outcome and every status a client reads - as consistent cross-context chains, with a coverage matrix and the assumptions written down. Builds on zenwave-test-data (same DDL export, file formats and validation). Use in the HITL loop of a flow, after the models are challenged and before the task board, or when the fixtures hold only one example per entity.
 ---
 
 # ZenWave Test Scenarios
@@ -12,13 +12,18 @@ the branches the flow can take, the ways it can fail, and the outcomes clients
 observe.
 
 It costs more than the basic skill: it reads every flow and model, writes several
-times more rows, and has to keep them consistent. Use it when tests are about to be
-written: before implementing behavior, after a gap report, before writing flow
-tests.
+times more rows, and has to keep them consistent. Use it in the HITL loop of a flow,
+once the models are challenged (`zenwave-grill-models`) and before the task board:
+the board's tasks point at its chains, and the AFK loop writes its tests from them.
 
 It changes **test resources only**. It never adds states, fields or columns, and
 never edits `*.zfl` or `*.zdl`. If a case can't be expressed with the current model,
-it's a model gap: list it, skip the row, and report it so a human can decide.
+it's a model gap: write a proposal (`docs/proposals/P-<nn>.md`, see
+`zenwave-model-gap`), skip the row, and report it so a human can decide.
+
+**The person approves the result.** The scenario and coverage matrices are what they
+review: test data is part of the gate between the loops. Once the baseline is tagged,
+the AFK loop never edits these files; changing them is HITL work, with this skill.
 
 ## Authorization
 
@@ -36,7 +41,7 @@ ZFL for states and chains), plus:
 
 | Input | Used for |
 |---|---|
-| **Gap report** (`docs/zenwave-gap-report*.md`, if present) | its test-fixture finding as required coverage; its model gaps (states the lifecycle never reaches); its open questions, which the fixtures must not answer silently |
+| **Open proposals** (`docs/proposals/`) | states or cases the model can't express yet: no row, and the fixtures must not answer them silently |
 | **Current `data.sql` and fixtures** | chains, ids and business keys to keep |
 | **Test sources** (`src/test/**`) | business ids existing tests already reference |
 | **API contracts** (OpenAPI, AsyncAPI) | the read side: which statuses a client can query |
@@ -127,6 +132,9 @@ The `data.sql` header holds:
 3. the **coverage matrix** from step 2, compacted to `need → chain/row` (or the
    reason for no row);
 4. the **assumptions**: `assumption | value used | open question`.
+
+Give every chain a short id (`C-01`, `C-02`…): the board's `test data:` fields point
+at chains, and implementers start their tests from them.
 
 If the project has a frontend or API mocks, the scenario matrix is the shared
 catalogue of cases: reuse its chain ids in the mock data, so backend and frontend
