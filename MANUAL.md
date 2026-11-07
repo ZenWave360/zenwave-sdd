@@ -2,6 +2,16 @@
 
 The [README](README.md) is the step by step. This is the method behind it, and the reference for each piece.
 
+```
+ discovery ─► grill the domain ─► ZFL ─► ZDL ─► grill the models ─► generate ─► test data ─► board ─► gate (tag)
+   brief,        glossary, ADRs     ▲                │                 (ZenWave SDK, optional)              │
+   Event Storming                   └── you decide ◄─┘                                                       ▼
+                                          ▲                         orchestrator: implement ─► commit ─► review slice
+                                          └──── model gap proposals ◄──────────┘             (afk/<flow> branch)
+                                                                                                   │
+                                                                     done ─► you merge it, signed ◄┘
+```
+
 ## 1. Principles
 
 - **The models are the spec.** ZFL says when and why (flows, policies, outcomes, compensations, timers); ZDL says
@@ -28,7 +38,7 @@ The [README](README.md) is the step by step. This is the method behind it, and t
 | Step | Skill | Output | Who decides |
 |---|---|---|---|
 | Discovery and first models (new project) | `zenwave-grill-domain` | `GLOSSARY.md`, `docs/adr/`, `docs/domain.md`, then one `*.zfl` per flow and one `*.zdl` per bounded context | you, answering rounds of questions; you review the draft |
-| A new flow (existing project) | `zenwave-extend-models` | the impact list, a new `*.zfl`, additive changes to the existing `*.zdl` | you, on the impact list before it writes |
+| A new flow (existing project) | `zenwave-grill-domain`, then `zenwave-extend-models` | the new `*.zfl`, glossary entries and ADRs; then the change list and additive changes to the existing `*.zdl` | you, answering the grilling, then on the change list before it edits |
 | Challenge | `zenwave-grill-models` | model changes, ADRs, glossary entries | you |
 | Projections | ZenWave IDE plugin | diagrams, state machines, contracts | you, by looking |
 | Generate | ZenWave SDK (`zenwave-scripts.zw`) | structure, APIs, test skeletons | deterministic |
@@ -201,8 +211,8 @@ failed. The skills call it through `.zenwave/bin/lint-zdl.sh` (installed by `ins
 How a flow becomes ZDL (one model per bounded context, commands, events, `@calls`, multi-response results, lifecycles,
 and `@asyncapi` or `@listener` by deployment shape) lives in `templates/zenwave-languages/modeling-rules.md`, with the
 id and topic conventions next to it. It came from the first skill of this repository, `zfl-to-zdl`, a scaffold generator
-that `zenwave-grill-domain` and `zenwave-extend-models` replaced: they write models from decisions, not from a ZFL
-alone.
+that `zenwave-grill-domain` and `zenwave-extend-models` replaced: the first writes the models from the decisions of the
+grilling; the second takes a decided ZFL flow and brings the existing ZDL up to it, change list first.
 
 ## 8. Developing zenwave-sdd
 
@@ -219,5 +229,4 @@ alone.
 ## Credits
 
 Grilling is Matt Pocock's skill (MIT), with a ZenWave layer; vertical slices, tracer bullets, the smart zone and the day/night
-shift framing come from his workshop and from Dex Horthy (HumanLayer); the Ralph loop is Geoffrey Huntley's, and the practice of an orchestrator handing tasks to workers in clones comes
-from how ZenWave's own repositories were built.
+shift framing come from his workshop and from Dex Horthy (HumanLayer); the Ralph loop is Geoffrey Huntley's, and the practice of an orchestrator handing tasks to workers in clones comes from how ZenWave's own repositories were built.

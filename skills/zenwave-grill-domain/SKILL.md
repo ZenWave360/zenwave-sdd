@@ -1,6 +1,6 @@
 ---
 name: zenwave-grill-domain
-description: Greenfield discovery to models - interview the person about a new domain, from a brief, PRD, Event Storming photos or meeting transcripts, until the business flows, bounded contexts, commands, events, outcomes and rules are decided, writing GLOSSARY.md (with the ZFL/ZDL identifiers) and ADRs as decisions settle, and then draft all the models - one ZFL file per flow and one ZDL per bounded context - ready to be challenged with zenwave-grill-models. Use at the start of the HITL loop of a new project; for a new flow on top of existing code and models use zenwave-extend-models.
+description: Greenfield discovery to models - interview the person about a new domain, from a brief, PRD, Event Storming photos or meeting transcripts, until the business flows, bounded contexts, commands, events, outcomes and rules are decided, writing GLOSSARY.md (with the ZFL/ZDL identifiers) and ADRs as decisions settle, and then draft all the models - one ZFL file per flow and one ZDL per bounded context - ready to be challenged with zenwave-grill-models. Use at the start of the HITL loop of a new project. In an existing project, use it to grill a new business flow against the existing models and write only its ZFL; zenwave-extend-models then brings the existing ZDL up to it.
 ---
 
 # Grill the domain
@@ -22,10 +22,21 @@ person and of the repository's documents; identifiers stay in English unless an 
 
 ## Before the first round
 
-Read every input, and the existing `GLOSSARY.md`, `docs/adr/` and models, if any. If models already exist and the
-person wants a new flow on top of them, this is the wrong skill: use `zenwave-extend-models`. Look up facts yourself.
+Read every input, and the existing `GLOSSARY.md`, `docs/adr/` and models, if any. Look up facts yourself.
 Then show the person, in a few lines, what you understood: the actors, the flows you can see, and the open branches.
 The first round starts from there.
+
+**A new flow in an existing project.** When the project already has ZDL models and the person wants a new flow on top
+of them, grill only that flow, against what exists:
+
+- skip the branches already settled for the project (scope, bounded contexts, deployment shape) unless the new flow
+  reopens them;
+- for each step, ask whether an existing command or event already does it before naming a new one: reuse beats a near
+  copy;
+- when a step needs a context nobody owns yet, that is a new bounded context and an ADR.
+
+Write the glossary entries and ADRs as usual, then only the new ZFL file. Do not edit the existing ZDL: hand over to
+`zenwave-extend-models`, which takes the new flow and brings each ZDL up to it.
 
 ## The design tree for a ZenWave domain
 
@@ -112,7 +123,8 @@ glossary: every identifier in a model is in the glossary and the other way round
 ## Hand over
 
 Tell the person: the files written, the open questions marked `TODO(question)`, and the assumptions you had to make.
-The next step is `zenwave-grill-models`, which challenges the models and asks the person about each finding, then
+For a new flow in an existing project, the next step is `zenwave-extend-models` on the new ZFL. Otherwise, the next
+step is `zenwave-grill-models`, which challenges the models and asks the person about each finding, then
 generating the code (ZenWave SDK projects) and the test data.
 
 The brief or PRD this started from is not kept as a spec: once the models are approved, the models are the spec.

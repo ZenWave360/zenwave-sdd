@@ -30,7 +30,8 @@ When unsure, it is a gap: a short proposal costs the person a minute; a wrong gu
 Follow [proposal-format.md](references/proposal-format.md). Take the next free id in `docs/proposals/` (the highest
 `P-<nn>` plus one; when several agents run at once, the orchestrator may renumber).
 
-- **Problem**: the lines that cannot express the behavior, `file:line`, quoted briefly.
+- **Problem**: the lines that cannot express the behavior, quoted briefly, each one a link to its line:
+  `[file:line](<path relative to the proposal>#L<line>)`.
 - **Evidence**: the test, fixture or input that shows it. A failing test name is the best evidence.
 - **Options**: at least one, each with what it changes in the models, the generated code and the test data. Recommend
   one, and say why.

@@ -95,11 +95,17 @@ fi
 
 # The orchestrator's clones and handoff files are never committed.
 touch .gitignore
+[[ -s .gitignore && -n "$(tail -c 1 .gitignore)" ]] && printf '\n' >> .gitignore
 for ignored in .zenwave/work/ .zenwave/handoff/; do
   grep -qxF "$ignored" .gitignore || { printf '%s\n' "$ignored" >> .gitignore; note "ignored $ignored"; }
 done
 
 echo "$version" > .zenwave/zenwave-sdd.version
+
+# .zenwave/routing.md and .zenwave/bin are meant to be committed; warn when the project's own rules ignore them.
+for kept in .zenwave/routing.md .zenwave/bin/lint-zdl.sh; do
+  git check-ignore -q "$kept" && note "WARNING: $kept is ignored by .gitignore; un-ignore .zenwave/ (e.g. add !.zenwave) so it is committed"
+done
 
 echo "zenwave-sdd $version installed in $(pwd)"
 printf '  - %s\n' "${done_list[@]}"

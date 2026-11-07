@@ -125,7 +125,7 @@ Map every policy of this form:
 
 ```zfl
 when SomeEvent do someCommand {
-    service SomeSystem.SomeService
+    service SomeSystem.SomeService for (SomeAggregate)
     emits EventA
     emits EventB
 }
@@ -165,14 +165,14 @@ Map every synchronous step of this form:
 
 ```zfl
 when StartOrderCheckout do startOrderCheckout {
-    service OrdersCheckout.OrdersCheckoutService
+    service OrdersCheckout.OrdersCheckoutService for (Order)
     call reserveStock
     on StockReservedResult emits OrderCreated
     on StockUnavailableResult emits StockUnavailable
 }
 
 do reserveStock {
-    service CatalogInventory.InventoryService
+    service CatalogInventory.InventoryService for (StockReservation)
     response StockReservedResult
     response StockUnavailableResult
 }
