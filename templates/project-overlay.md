@@ -1,7 +1,14 @@
 # <Project>: ZenWave SDD overlay
 
-What every zenwave-sdd skill and agent needs to know about this project: where the models are, its shape, and its
-commands. `AGENTS.md` points here. Replace every `<placeholder>`; the skills stop when this file is incomplete.
+What every zenwave-sdd skill and agent needs to know about this project: where the models are, its shape, its
+commands, and where its test data is. `AGENTS.md` points here. Replace every `<placeholder>`; the skills stop when
+this file is incomplete.
+
+The placeholders marked `<after generation: ...>` and `<after test data: ...>` are the exception. They name facts that
+do not exist at install time. The skill that produces the fact fills them in (`zenwave-test-data` and
+`zenwave-test-scenarios` the test data row; `zenwave-gate-check` reports the duration of the full suite as missing and
+suggests the line). Skills do not stop for them. Each one is a pointer or a number on one line, never a copy of what
+it points at.
 
 ## Where things are
 
@@ -17,6 +24,7 @@ repositories must be cloned next to this one.
 | Domain summary | `docs/domain.md` |
 | Board of the flow in progress | `docs/tasks.md` (archived boards in `docs/tasks/`) |
 | Model gap proposals | `docs/proposals/` |
+| Test data and scenario matrix | `<after test data: src/test/resources/data.sql, and what its header holds: the chains, the fixed test "now" and how tests read it (a Clock)>` |
 | Generation script | `zenwave-scripts.zw` (projects generated with ZenWave SDK) |
 
 **If `zenwave-scripts.zw` reads the models from a packaged artifact** (`@import(...)` and `classpath:/...`):
@@ -51,6 +59,7 @@ export JAVA_HOME=<jdk>
 # focused tests of a task (the implementer runs only these)
 ./mvnw -q test -Dtest='<TestClass>'
 # full suite with integration tests and containers (once per slice review)
+# <after generation: full suite takes about N minutes, needs Docker / Testcontainers / ...>
 ./mvnw -q verify
 # lint the models
 bash .zenwave/bin/lint-zdl.sh --strict <zdl files>

@@ -57,13 +57,16 @@ check). It creates, only if missing, `docs/zenwave-sdd-overlay.md`, `.zenwave/ro
 
 - [`docs/zenwave-sdd-overlay.md`](templates/project-overlay.md): where the models are (in this repository, a sibling
   one, or a packaged jar), the shape (microservices or modulith), and the commands to compile, run the focused tests,
-  run the full suite and lint the models. Every skill reads it first and stops if it is incomplete.
+  run the full suite and lint the models. Every skill reads it first and stops if it is incomplete. The lines marked
+  `<after generation: ...>` and `<after test data: ...>` are the exception: they are facts that do not exist yet (where
+  the test data is, how long the full suite takes). The skills fill them in as the flow goes, and the gate check
+  reports what is still missing.
 - [`.zenwave/routing.md`](templates/routing.md): which worker takes each kind of work (mechanical, bounded, advanced,
   review), who is the fallback, how Codex and Grok are started, how many tasks run at once, and which files no worker
   may change. Set it to the agents and subscriptions you have; change it any time.
 
 ```bash
-grep -n '<' docs/zenwave-sdd-overlay.md     # no placeholder left
+grep -n '<' docs/zenwave-sdd-overlay.md | grep -v '<after '    # no placeholder left, except the ones filled later
 git add -A && git commit -m "chore: set up zenwave-sdd"
 ```
 
@@ -157,7 +160,9 @@ precondition, branch, failure and outcome of the flows. Together they generate:
 - the same data as JSON aggregates, for the in-memory unit tests
 - the scenario and coverage matrices, for you to review
 
-Once approved, agents never change them.
+Both skills add one row to the overlay, "Test data and scenario matrix", that points at the `data.sql` header: the
+chains and the fixed test "now" stay in the header, the overlay only points at them. Once approved, agents never
+change them.
 
 **2.6 The board.**
 
@@ -191,7 +196,9 @@ Review it: the mistake to look for is a slice that is a layer ("all the mappers"
 /zenwave-gate-check place-order-flow
 ```
 
-It checks what can be checked (lint, proposals, test data, the board's DAG, the AFK setup, a clean tree) and asks you
+It checks what can be checked (lint, proposals, test data, the board's DAG, the AFK setup, a clean tree), and that the
+overlay says where the test data is, how long the full suite takes and which tests fail at the baseline (it prints the
+line to add, it does not edit) and asks you
 to confirm what only you can: that the models were challenged, the projections reviewed, the test data and the board
 approved. It generates:
 
@@ -276,7 +283,7 @@ agents in a worktree inside a container and has loop templates; the board and th
 | In your project | What it is |
 |---|---|
 | `GLOSSARY.md`, `docs/adr/`, `docs/domain.md` | the language, the decisions, the domain summary |
-| `docs/zenwave-sdd-overlay.md` | where the models are, the shape, the commands |
+| `docs/zenwave-sdd-overlay.md` | where the models and the test data are, the shape, the commands, how long the full suite takes |
 | `docs/tasks.md`, `docs/tasks/` | the board of the flow in progress, and the archived ones |
 | `docs/proposals/` | model gaps waiting for, or with, your decision |
 | `.zenwave/routing.md` | which worker and model take each kind of work, the limits, the protected files |

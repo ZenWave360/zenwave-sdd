@@ -24,7 +24,9 @@ An explicit invocation of `$zenwave-test-data` authorizes the complete workflow:
   against the project's configured **test** database;
 - rewriting `src/test/resources/data.sql` and
   `src/test/resources/data/jpa/**`;
-- running the repository and service test suites specified below.
+- running the repository and service test suites specified below;
+- adding or updating **one row** of the project overlay (`docs/zenwave-sdd-overlay.md`), the one that points at the
+  test data (step 6).
 
 Do not request a separate confirmation for these actions. Ask only before an
 action outside this workflow, such as targeting a production database, changing
@@ -176,6 +178,20 @@ mvn -Dtest='*ServiceTest' -Dsurefire.failIfNoSpecifiedTests=false test
 - A forced regeneration (`-f`) overwrites generated-once files, including
   `DockerComposeInitializer` (its `DATABASENAME` placeholder breaks the Testcontainers
   DB URL) and `data.sql`. Check `git diff` for them after regenerating.
+
+## 6. Record it in the overlay
+
+When the data is written or refreshed and the validation has run, make the overlay point at it. In the "Where things
+are" table of `docs/zenwave-sdd-overlay.md`, add or update **one row**, "Test data and scenario matrix":
+
+```markdown
+| Test data and scenario matrix | `src/test/resources/data.sql` (header: one example per entity, chain `C-01`) and `src/test/resources/data/jpa/<Entity>/<n>.json` |
+```
+
+- If the overlay still has the `<after test data: ...>` placeholder on that row, replace it.
+- If the row already describes a scenario set (written by zenwave-test-scenarios), leave it: that skill owns it.
+- One line, and a pointer: what the data says stays in the `data.sql` header, so the overlay never contradicts it.
+- Touch nothing else in the overlay. If the project has no overlay, say so in the report and skip this step.
 
 ## Refreshing after a model change
 

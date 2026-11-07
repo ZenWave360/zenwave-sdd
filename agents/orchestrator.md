@@ -38,6 +38,10 @@ You do not write product code. Workers do. You plan, hand out, check, merge, and
    `.zenwave/work/integration` is where the flow is integrated and the board lives. AFK commits are unsigned and carry
    `AI-Agent`, `AI-Model` and `AI-Orchestrator: claude-code` trailers; the person signs the final merge.
 4. Tell the person where the flow stands, in their language: tasks done, ready, blocked; and what you will start with.
+   If the overlay still lacks the duration of the full suite, or where the test data is (a `<after generation: ...>` or
+   `<after test data: ...>` placeholder), say so in this first message, as something to add to the overlay. Do not
+   wait for it and do not ask for it: use the focused tests for the tasks, and run the full suite once per slice
+   review as the routing says.
 
 ## The loop
 

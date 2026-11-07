@@ -69,6 +69,18 @@ branch, broken into an approved board, and committed and tagged. `zenwave-gate-c
 asks you for the rest. The tag `baseline/<flow>-<n>` goes on the implementation repository and on each repository
 that holds models, so "what was approved" is one name everywhere.
 
+### The overlay grows with the flow
+
+`docs/zenwave-sdd-overlay.md` is written once, at install, and some of what the AFK loop needs does not exist yet:
+where the test data and its scenario matrix are, the fixed test "now" the tests read through a `Clock`, and how long the
+full suite takes (it can only be measured once generated tests run; with Testcontainers it is minutes, which is why
+workers run only their focused tests). The template marks those facts `<after generation: ...>` and
+`<after test data: ...>`. `zenwave-test-data` and `zenwave-test-scenarios` fill the row that points at the data;
+`zenwave-gate-check` checks the three facts and the known failing tests, and prints the line to add when one is missing.
+The overlay holds pointers and commands, one line per fact; the content itself stays where it was written, so it can
+never contradict it. With the overlay complete, starting the orchestrator takes no briefing: "run the AFK loop for
+`<flow>`".
+
 ## 3. The AFK loop
 
 ### Roles

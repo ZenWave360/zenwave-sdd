@@ -1,7 +1,7 @@
 ## ZenWave SDD
 
 This project is designed with ZenWave models and built with the zenwave-sdd skills, in two loops per business flow.
-Where the models are, the shape of the project and its commands: [docs/zenwave-sdd-overlay.md](docs/zenwave-sdd-overlay.md).
+Where the models and the test data are, the shape of the project and its commands: [docs/zenwave-sdd-overlay.md](docs/zenwave-sdd-overlay.md).
 
 - The models are the spec: the ZFL flows say when and why, the ZDL models say what. Use the terms of `GLOSSARY.md`.
 - ZFL, ZDL, API contracts and the approved test data change only when the person asks for that change in the

@@ -31,7 +31,8 @@ An explicit invocation of `$zenwave-test-scenarios` authorizes the same workflow
 [zenwave-test-data](../zenwave-test-data/SKILL.md#authorization): exporting the DDL
 against the **test** database, rewriting `src/test/resources/data.sql` and
 `src/test/resources/data/jpa/**`, and running the repository and service test
-suites. Ask before anything outside that.
+suites, and adding or updating the one overlay row that points at the test data (step 6). Ask before anything
+outside that.
 
 ## Inputs
 
@@ -151,8 +152,25 @@ tests pass, service tests load the fixtures, and SQL and JSON agree. Then:
   the chain's point of the flow, unless a need asks for that on purpose and the
   matrix says so.
 
-Report back with three short lists: needs covered (count per source), needs without a
+Then record it in the overlay (step 6). Report back with three short lists: needs covered (count per source), needs without a
 row and why, and the assumptions made.
+
+## 6. Record it in the overlay
+
+Make `docs/zenwave-sdd-overlay.md` point at what this skill wrote, so the orchestrator and the workers find it without
+being told. In its "Where things are" table, add or update **one row**, "Test data and scenario matrix", naming what
+the `data.sql` header holds:
+
+```markdown
+| Test data and scenario matrix | `src/test/resources/data.sql` (header: scenario and coverage matrices, chains `C-01`..`C-<nn>`, assumptions, the fixed test "now" `<timestamp>` read by tests through a fixed `Clock`) and `src/test/resources/data/jpa/<Entity>/<n>.json` |
+```
+
+- The chain ids, and the fixed test "now" with how tests read it (a `Clock`), are the facts to name. Keep them in
+  `data.sql` and only point at them: the overlay never repeats the matrix.
+- Replace the `<after test data: ...>` placeholder if it is still there, and the row `zenwave-test-data` wrote.
+- This skill does not write the `Clock`. If the project has no injected `Clock`, say so in the report: a board task
+  must add it, because the tests depend on the fixed "now".
+- Touch nothing else in the overlay. If the project has no overlay, say so in the report and skip this step.
 
 ## Anti-patterns
 
