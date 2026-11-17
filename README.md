@@ -44,9 +44,14 @@ articles [Reading Markdown is the bottleneck](https://ivangsa.com/articles/sdd-m
 **1.1 Install zenwave-sdd** from a release tag. Run it again with a newer tag to upgrade, then review `git diff`:
 
 ```bash
-TAG=<tag>
-git clone -q --depth 1 --branch "$TAG" https://github.com/ZenWave360/zenwave-sdd ../zenwave-sdd-$TAG
-bash ../zenwave-sdd-$TAG/install.sh            # --agents claude,codex,grok (default: all three)
+(
+  TAG="main" # tag or branch
+  TMP_DIR=$(mktemp -d) || exit 1
+  trap 'rm -rf "$TMP_DIR"' EXIT
+
+  git clone -q --depth 1 --branch "$TAG" https://github.com/ZenWave360/zenwave-sdd "$TMP_DIR" &&
+  bash "$TMP_DIR/install.sh" # --agents claude,codex,grok (default: all three)
+)
 ```
 
 It installs the skills for each agent (`.claude/skills`, `.agents/skills`, `.grok/skills`), the `orchestrator`,
