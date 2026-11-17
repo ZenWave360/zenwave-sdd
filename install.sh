@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Installs zenwave-sdd into a project, or upgrades it: the skills for each agent, the orchestrator, implementer and
 # reviewer agents, the ZDL and board checkers, and the templates the project does not have yet. Run it from the
-# project's root:
+# folder to install into (a project, or a subproject of a monorepo; a git repo is optional):
 #
 #   bash <zenwave-sdd>/install.sh [--agents claude,codex,grok]
 #
 # What it owns, and replaces on every run: the zenwave-sdd skills in each agent's skills folder, the three agents in
 # .claude/agents, .zenwave/bin, and the section between the zenwave-sdd markers of AGENTS.md.
 # What it creates only when missing: docs/zenwave-sdd-overlay.md, .zenwave/routing.md, CLAUDE.md, AGENTS.md.
-# Review the result with `git status` and `git diff`, then commit it.
+# In a git repo it offers to commit the installed files; review them with `git status` and `git diff`.
 set -euo pipefail
 
 SRC=$(cd "$(dirname "$0")" && pwd)
@@ -21,16 +21,23 @@ while (( $# )); do
   esac
 done
 
-git rev-parse --show-toplevel >/dev/null 2>&1 || { echo "run it from the root of the project's git repository" >&2; exit 1; }
-[[ -z "$(git rev-parse --show-prefix)" ]] || { echo "run it from the root of the repository: $(git rev-parse --show-toplevel)" >&2; exit 1; }
+# Installs in the current folder (a project, or a subproject of a monorepo), git repo or not.
+if git rev-parse --show-toplevel >/dev/null 2>&1; then in_repo=1; else in_repo=0; fi
+# Any uncommitted change (staged or not) in the places this script writes: then the commit offer is skipped, so it
+# can never sweep up the user's own edits.
+managed=(.claude/skills .agents/skills .grok/skills .claude/agents .zenwave docs/zenwave-sdd-overlay.md CLAUDE.md AGENTS.md .gitignore)
+predirty=0
+if (( in_repo )) && [[ -n "$(git status --porcelain -- "${managed[@]}")" ]]; then predirty=1; fi
 [[ "$SRC" != "$(pwd)" ]] || { echo "run it from your project, not from zenwave-sdd" >&2; exit 1; }
 version=$(git -C "$SRC" describe --tags --always --dirty 2>/dev/null || echo unknown)
 
 done_list=()
+touched=()   # exact paths this run installs, removes or edits: the only ones the commit offer stages
+track() { touched+=("$@"); }
 note() { done_list+=("$*"); }
 
 # replace_dir <source> <target>: the target becomes an exact copy (only for folders zenwave-sdd owns).
-replace_dir() { rm -rf -- "$2"; mkdir -p "$(dirname "$2")"; cp -R "$1" "$2"; }
+replace_dir() { rm -rf -- "$2"; mkdir -p "$(dirname "$2")"; cp -R "$1" "$2"; track "$2"; }
 
 # Skills, into each agent's folder (copies: symlinks are unreliable on Windows).
 for agent in ${agents//,/ }; do
@@ -50,7 +57,7 @@ done
 # Retired skills of earlier versions.
 for dir in .claude/skills .agents/skills .grok/skills; do
   for old in zenwave-fill-gaps zenwave-gap-report zfl-to-zdl zenwave-tasks-from-generated; do
-    [[ -d "$dir/$old" ]] && { rm -rf -- "${dir:?}/$old"; note "removed retired $dir/$old"; }
+    [[ -d "$dir/$old" ]] && { rm -rf -- "${dir:?}/$old"; track "$dir/$old"; note "removed retired $dir/$old"; }
   done
 done
 
@@ -58,6 +65,7 @@ done
 if [[ ",$agents," == *",claude,"* ]]; then
   mkdir -p .claude/agents
   cp "$SRC"/agents/*.md .claude/agents/
+  for f in "$SRC"/agents/*.md; do track ".claude/agents/$(basename "$f")"; done
   note "agents → .claude/agents (orchestrator, implementer, reviewer)"
 fi
 
@@ -65,17 +73,18 @@ fi
 mkdir -p .zenwave/bin
 cp "$SRC/bin/lint-zdl.sh" .zenwave/bin/lint-zdl.sh && chmod +x .zenwave/bin/lint-zdl.sh
 cp "$SRC/bin/check-board.sh" .zenwave/bin/check-board.sh && chmod +x .zenwave/bin/check-board.sh
+track .zenwave/bin/lint-zdl.sh .zenwave/bin/check-board.sh
 note "checkers → .zenwave/bin (lint-zdl.sh, check-board.sh)"
 for old in .zenwave/bin/zw-afk .zenwave/lib/zw-afk; do
-  [[ -e "$old" ]] && { rm -rf -- "$old"; note "removed the retired $old"; }
+  [[ -e "$old" ]] && { rm -rf -- "$old"; track "$old"; note "removed the retired $old"; }
 done
 
 # Templates, only when missing.
-copy_new() { [[ -e "$2" ]] && return; mkdir -p "$(dirname "$2")"; cp "$1" "$2"; note "created $2: fill it in"; }
+copy_new() { [[ -e "$2" ]] && return; mkdir -p "$(dirname "$2")"; cp "$1" "$2"; track "$2"; note "created $2: fill it in"; }
 copy_new "$SRC/templates/project-overlay.md" docs/zenwave-sdd-overlay.md
 copy_new "$SRC/templates/routing.md" .zenwave/routing.md
 [[ -e .zenwave/afk.conf ]] && note "obsolete: .zenwave/afk.conf is replaced by .zenwave/routing.md; delete it when you have moved your choices over"
-[[ -e CLAUDE.md ]] || { printf '@AGENTS.md\n' > CLAUDE.md; note "created CLAUDE.md"; }
+[[ -e CLAUDE.md ]] || { printf '@AGENTS.md\n' > CLAUDE.md; track CLAUDE.md; note "created CLAUDE.md"; }
 
 # AGENTS.md: the zenwave-sdd section between markers, replaced on upgrade; the rest is the project's.
 begin='<!-- zenwave-sdd: managed by install.sh, edit outside these markers -->'
@@ -101,16 +110,43 @@ for ignored in .zenwave/work/ .zenwave/handoff/; do
 done
 
 echo "$version" > .zenwave/zenwave-sdd.version
+track AGENTS.md .gitignore .zenwave/zenwave-sdd.version
 
 # .zenwave/routing.md and .zenwave/bin are meant to be committed; warn when the project's own rules ignore them.
-for kept in .zenwave/routing.md .zenwave/bin/lint-zdl.sh; do
-  git check-ignore -q "$kept" && note "WARNING: $kept is ignored by .gitignore; un-ignore .zenwave/ (e.g. add !.zenwave) so it is committed"
-done
+if (( in_repo )); then
+  for kept in .zenwave/routing.md .zenwave/bin/lint-zdl.sh; do
+    git check-ignore -q "$kept" && note "WARNING: $kept is ignored by .gitignore; un-ignore .zenwave/ (e.g. add !.zenwave) so it is committed"
+  done
+fi
 
 echo "zenwave-sdd $version installed in $(pwd)"
 printf '  - %s\n' "${done_list[@]}"
 cat <<'EOF'
 
-Next: fill in docs/zenwave-sdd-overlay.md, look at .zenwave/routing.md, review `git diff`, and commit.
+Next: fill in docs/zenwave-sdd-overlay.md and look at .zenwave/routing.md.
 Then follow the README of zenwave-sdd from "The HITL loop".
 EOF
+
+# Offer to commit what this run installed: only in a git repo, only the paths it touched, and only when those paths
+# had no uncommitted changes before the run. Nothing is staged until the user says yes.
+if (( in_repo )) && [[ -t 0 ]]; then
+  if (( predirty )); then
+    echo "uncommitted changes existed in the installed locations before this run: not offering a commit; review with git status"
+  else
+    commit_paths=()
+    for p in "${touched[@]}"; do
+      if [[ -e $p ]] && git check-ignore -q "$p"; then continue; fi
+      if [[ -e $p ]] || git ls-files --error-unmatch -- "$p" >/dev/null 2>&1; then commit_paths+=("$p"); fi
+    done
+    if (( ${#commit_paths[@]} == 0 )) || [[ -z "$(git status --porcelain -- "${commit_paths[@]}")" ]]; then
+      echo "nothing changed: already up to date"
+    else
+      git status --short -- "${commit_paths[@]}"
+      read -r -p "Commit these installed files? [y/N] " answer
+      if [[ $answer == [yY]* ]]; then
+        git add -A -- "${commit_paths[@]}"
+        git commit -m "chore: install zenwave-sdd $version" -- "${commit_paths[@]}"
+      fi
+    fi
+  fi
+fi
