@@ -96,6 +96,13 @@ The file should contain:
 - one primary service for that bounded context
 - event definitions for the events the service emits
 
+Layout:
+
+- The `policies (<Entity>)` block of an entity goes right after that entity, never before it.
+- Every enum value carries an explicit numeric id, consecutive from 1 in the order of declaration:
+  `CONFIRMED(1)`, `CANCELLED(2)`. A value added later takes the next free id; existing ids never change
+  or get reused, because they may already be persisted.
+
 ### 2. Aggregate and entity naming
 
 Derive the aggregate root from the bounded context, not mechanically from the service class name.
@@ -125,13 +132,16 @@ Map every policy of this form:
 
 ```zfl
 when SomeEvent do someCommand {
-    service SomeSystem.SomeService for (SomeAggregate)
+    service SomeSystem.SomeService
     emits EventA
     emits EventB
 }
 ```
 
 to a ZDL service command on that system.
+
+`for (<Aggregate>)` goes only on the service declared in the ZFL `systems` block and on the ZDL `service`. The
+`service System.Service` reference inside a `when` or `do` block never carries it.
 
 Classification:
 
@@ -165,14 +175,14 @@ Map every synchronous step of this form:
 
 ```zfl
 when StartOrderCheckout do startOrderCheckout {
-    service OrdersCheckout.OrdersCheckoutService for (Order)
+    service OrdersCheckout.OrdersCheckoutService
     call reserveStock
     on StockReservedResult emits OrderCreated
     on StockUnavailableResult emits StockUnavailable
 }
 
 do reserveStock {
-    service CatalogInventory.InventoryService for (StockReservation)
+    service CatalogInventory.InventoryService
     response StockReservedResult
     response StockUnavailableResult
 }
@@ -269,8 +279,8 @@ service InventoryService for (StockReservation) {
 }
 
 enum ReserveStockOutcome {
-    RESERVED
-    UNAVAILABLE
+    RESERVED(1)
+    UNAVAILABLE(2)
 }
 
 /**
@@ -369,6 +379,8 @@ Before writing each file, verify:
 - Every event-triggered command's required input fields exist in the triggering event (data lineage), or are resolvable by a lookup in the consuming context.
 - State-changing methods have `@transition` annotations.
 - Lifecycle enum values cover every state referenced by `@lifecycle` and `@transition`.
+- Every enum value has a numeric id (`CONFIRMED(1)`), consecutive within its enum, none changed or reused.
+- Each `policies (<Entity>)` block sits right after its entity.
 - `withEvents` matches the outcomes declared in the flow.
 - The model id and any AsyncAPI plugin ids follow `asyncapi-naming-conventions.md`.
 - Locally owned channels and topics follow `asyncapi-naming-conventions.md`.
